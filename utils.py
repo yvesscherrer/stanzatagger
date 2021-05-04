@@ -12,39 +12,9 @@ import unicodedata
 import torch
 import numpy as np
 
-from constant import lcode2lang
-import constant
 import conll18_ud_eval as ud_eval
 
 logger = logging.getLogger('stanza')
-
-# filenames
-def get_wordvec_file(wordvec_dir, shorthand, wordvec_type=None):
-    """ Lookup the name of the word vectors file, given a directory and the language shorthand.
-    """
-    lcode, tcode = shorthand.split('_', 1)
-    lang = lcode2lang[lcode]
-    # locate language folder
-    word2vec_dir = os.path.join(wordvec_dir, 'word2vec', lang)
-    fasttext_dir = os.path.join(wordvec_dir, 'fasttext', lang)
-    lang_dir = None
-    if wordvec_type is not None:
-        lang_dir = os.path.join(wordvec_dir, wordvec_type, lang)
-        if not os.path.exists(lang_dir):
-            raise FileNotFoundError("Word vector type {} was specified, but directory {} does not exist".format(wordvec_type, lang_dir))
-    elif os.path.exists(word2vec_dir): # first try word2vec
-        lang_dir = word2vec_dir
-    elif os.path.exists(fasttext_dir): # otherwise try fasttext
-        lang_dir = fasttext_dir
-    else:
-        raise FileNotFoundError("Cannot locate word vector directory for language: {}  Looked in {} and {}".format(lang, word2vec_dir, fasttext_dir))
-    # look for wordvec filename in {lang_dir}
-    filename = os.path.join(lang_dir, '{}.vectors'.format(lcode))
-    if os.path.exists(filename + ".xz"):
-        filename = filename + ".xz"
-    elif os.path.exists(filename + ".txt"):
-        filename = filename + ".txt"
-    return filename
 
 # training schedule
 def get_adaptive_eval_interval(cur_dev_size, thres_dev_size, base_interval):
@@ -155,36 +125,6 @@ def unmap_with_copy(indices, src_tokens, vocab):
                 words.append(tokens[idx])
         result += [words]
     return result
-
-def prune_decoded_seqs(seqs):
-    """
-    Prune decoded sequences after EOS token.
-    """
-    out = []
-    for s in seqs:
-        if constant.EOS in s:
-            idx = s.index(constant.EOS_TOKEN)
-            out += [s[:idx]]
-        else:
-            out += [s]
-    return out
-
-def prune_hyp(hyp):
-    """
-    Prune a decoded hypothesis
-    """
-    if constant.EOS_ID in hyp:
-        idx = hyp.index(constant.EOS_ID)
-        return hyp[:idx]
-    else:
-        return hyp
-
-def prune(data_list, lens):
-    assert len(data_list) == len(lens)
-    nl = []
-    for d, l in zip(data_list, lens):
-        nl.append(d[:l])
-    return nl
 
 def sort(packed, ref, reverse=True):
     """

@@ -48,10 +48,7 @@ def parse_args(args=None):
     parser.add_argument('--eval_file', type=str, default=None, help='Input file for data loader.')
     parser.add_argument('--output_file', type=str, default=None, help='Output CoNLL-U file.')
     parser.add_argument('--gold_file', type=str, default=None, help='Output CoNLL-U file.')
-
     parser.add_argument('--mode', default='train', choices=['train', 'predict'])
-    parser.add_argument('--lang', type=str, help='Language')
-    parser.add_argument('--shorthand', type=str, help="Treebank shorthand")
 
     parser.add_argument('--hidden_dim', type=int, default=200)
     parser.add_argument('--char_hidden_dim', type=int, default=400)
@@ -117,7 +114,7 @@ def model_file_name(args):
     if args['save_name'] is not None:
         save_name = args['save_name']
     else:
-        save_name = args['shorthand'] + "_tagger.pt"
+        save_name = "tagger.pt"
 
     return os.path.join(args['save_dir'], save_name)
 
@@ -127,11 +124,11 @@ def load_pretrain(args):
         if args['wordvec_pretrain_file']:
             pretrain_file = args['wordvec_pretrain_file']
         else:
-            pretrain_file = '{}/{}.pretrain.pt'.format(args['save_dir'], args['shorthand'])
+            pretrain_file = '{}/pretrain.pt'.format(args['save_dir'])
         if os.path.exists(pretrain_file):
             vec_file = None
         else:
-            vec_file = args['wordvec_file'] if args['wordvec_file'] else utils.get_wordvec_file(args['wordvec_dir'], args['shorthand'])
+            vec_file = args['wordvec_file']
         pretrain = Pretrain(pretrain_file, vec_file, args['pretrain_max_vocab'])
     return pretrain
 
@@ -270,7 +267,7 @@ def evaluate(args):
 
     # load config
     for k in args:
-        if k.endswith('_dir') or k.endswith('_file') or k in ['shorthand'] or k == 'mode':
+        if k.endswith('_dir') or k.endswith('_file') or k == 'mode':
             loaded_args[k] = args[k]
 
     # load data
@@ -294,8 +291,7 @@ def evaluate(args):
     if gold_file is not None:
         _, _, score = scorer.score(system_pred_file, gold_file)
 
-        logger.info("Tagger score:")
-        logger.info("{} {:.2f}".format(args['shorthand'], score*100))
+        logger.info("Tagger score: {:.2f}".format(score*100))
 
 if __name__ == '__main__':
     main()

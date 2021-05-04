@@ -9,16 +9,16 @@ import random
 
 import torch
 
-import constant
+import vocab
 from doc import HEAD, ID, UPOS
 
 logger = logging.getLogger('stanza')
 
-def map_to_ids(tokens, vocab):
-    ids = [vocab[t] if t in vocab else constant.UNK_ID for t in tokens]
+def map_to_ids(tokens, voc):
+    ids = [voc[t] if t in voc else vocab.UNK_ID for t in tokens]
     return ids
 
-def get_long_tensor(tokens_list, batch_size, pad_id=constant.PAD_ID):
+def get_long_tensor(tokens_list, batch_size, pad_id=vocab.PAD_ID):
     """ Convert (list of )+ tokens to a padded LongTensor. """
     sizes = []
     x = tokens_list

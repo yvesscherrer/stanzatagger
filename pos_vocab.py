@@ -6,9 +6,9 @@ from vocab import BaseVocab, BaseMultiVocab, CharVocab
 from vocab import CompositeVocab, VOCAB_PREFIX, EMPTY, EMPTY_ID
 
 class WordVocab(BaseVocab):
-    def __init__(self, data=None, lang="", idx=0, cutoff=0, lower=False, ignore=[]):
+    def __init__(self, data=None, idx=0, cutoff=0, lower=False, ignore=[]):
         self.ignore = ignore
-        super().__init__(data, lang=lang, idx=idx, cutoff=cutoff, lower=lower)
+        super().__init__(data, idx=idx, cutoff=cutoff, lower=lower)
         self.state_attrs += ['ignore']
 
     def id2unit(self, id):
@@ -36,8 +36,8 @@ class WordVocab(BaseVocab):
         self._unit2id = {w:i for i, w in enumerate(self._id2unit)}
 
 class FeatureVocab(CompositeVocab):
-    def __init__(self, data=None, lang="", idx=0, sep="|", keyed=True):
-        super().__init__(data, lang, idx=idx, sep=sep, keyed=keyed)
+    def __init__(self, data=None, idx=0, sep="|", keyed=True):
+        super().__init__(data, idx=idx, sep=sep, keyed=keyed)
 
 class MultiVocab(BaseMultiVocab):
     def state_dict(self):

@@ -18,15 +18,14 @@ VOCAB_PREFIX = [PAD, UNK, EMPTY, ROOT]
 class BaseVocab:
     """ A base class for common vocabulary operations. Each subclass should at least 
     implement its own build_vocab() function."""
-    def __init__(self, data=None, lang="", idx=0, cutoff=0, lower=False):
+    def __init__(self, data=None, idx=0, cutoff=0, lower=False):
         self.data = data
-        self.lang = lang
         self.idx = idx
         self.cutoff = cutoff
         self.lower = lower
         if data is not None:
             self.build_vocab()
-        self.state_attrs = ['lang', 'idx', 'cutoff', 'lower', '_unit2id', '_id2unit']
+        self.state_attrs = ['idx', 'cutoff', 'lower', '_unit2id', '_id2unit']
 
     def build_vocab(self):
         raise NotImplementedError()
@@ -101,10 +100,10 @@ class CompositeVocab(BaseVocab):
     are treated as positioned values, and `<EMPTY>` is used to pad parts at the end when the
     incoming value is not long enough.'''
 
-    def __init__(self, data=None, lang="", idx=0, sep="", keyed=False):
+    def __init__(self, data=None, idx=0, sep="", keyed=False):
         self.sep = sep
         self.keyed = keyed
-        super().__init__(data, lang, idx=idx)
+        super().__init__(data, idx=idx)
         self.state_attrs += ['sep', 'keyed']
 
     def unit2parts(self, unit):

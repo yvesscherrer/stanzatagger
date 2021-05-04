@@ -51,10 +51,10 @@ class DataLoader:
 
     def init_vocab(self, data):
         assert self.eval == False # for eval vocab must exist
-        charvocab = CharVocab(data, self.args['shorthand'])
-        wordvocab = WordVocab(data, self.args['shorthand'], cutoff=7, lower=True)
-        uposvocab = WordVocab(data, self.args['shorthand'], idx=1)
-        featsvocab = FeatureVocab(data, self.args['shorthand'], idx=2)
+        charvocab = CharVocab(data, idx=0)
+        wordvocab = WordVocab(data, idx=0, cutoff=7, lower=True)
+        uposvocab = WordVocab(data, idx=1)
+        featsvocab = FeatureVocab(data, idx=2)
         vocab = MultiVocab({'char': charvocab,
                             'word': wordvocab,
                             'upos': uposvocab,
