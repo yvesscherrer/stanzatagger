@@ -172,12 +172,13 @@ def train(args):
     trainer = Trainer(args=args, vocab=vocab, pretrain=pretrain, use_cuda=args['cuda'])
 
     global_step = 0
+    epoch = 0
     max_steps = args['max_steps']
     dev_score_history = []
     best_dev_preds = []
     current_lr = args['lr']
     global_start_time = time.time()
-    format_str = 'Finished STEP {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
+    format_str = 'Finished step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
 
     if args['adapt_eval_interval']:
         args['eval_interval'] = utils.get_adaptive_eval_interval(dev_batch.num_examples, 2000, args['eval_interval'])
@@ -188,6 +189,7 @@ def train(args):
     # start training
     train_loss = 0
     while True:
+        epoch += 1
         do_break = False
         for i, batch in enumerate(train_batch):
             start_time = time.time()
@@ -206,7 +208,7 @@ def train(args):
                     preds = trainer.predict(batch)
                     dev_preds += preds
                 dev_preds = utils.unsort(dev_preds, dev_batch.data_orig_idx)
-                dev_batch.doc.set([UPOS, XPOS, FEATS], [y for x in dev_preds for y in x])
+                dev_batch.doc.set([UPOS, FEATS], [y for x in dev_preds for y in x])
                 CoNLL.dict2conll(dev_batch.doc.to_dict(), system_pred_file)
                 _, _, dev_score = scorer.score(system_pred_file, gold_file)
 
@@ -239,10 +241,10 @@ def train(args):
                 break
 
         if do_break: break
-
+        logger.info("Finished epoch {} after step {}".format(epoch, global_step))
         train_batch.reshuffle()
 
-    logger.info("Training ended with {} steps.".format(global_step))
+    logger.info("Training ended with {} steps in epoch {}.".format(global_step, epoch))
 
     if len(dev_score_history) > 0:
         best_f, best_eval = max(dev_score_history)*100, np.argmax(dev_score_history)+1
@@ -286,7 +288,7 @@ def evaluate(args):
     preds = utils.unsort(preds, batch.data_orig_idx)
 
     # write to file and score
-    batch.doc.set([UPOS, XPOS, FEATS], [y for x in preds for y in x])
+    batch.doc.set([UPOS, FEATS], [y for x in preds for y in x])
     CoNLL.dict2conll(batch.doc.to_dict(), system_pred_file)
 
     if gold_file is not None:

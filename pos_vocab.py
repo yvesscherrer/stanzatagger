@@ -35,10 +35,6 @@ class WordVocab(BaseVocab):
         self._id2unit = VOCAB_PREFIX + list(sorted(list(counter.keys()), key=lambda k: counter[k], reverse=True))
         self._unit2id = {w:i for i, w in enumerate(self._id2unit)}
 
-class XPOSVocab(CompositeVocab):
-    def __init__(self, data=None, lang="", idx=0, sep="", keyed=False):
-        super().__init__(data, lang, idx=idx, sep=sep, keyed=keyed)
-
 class FeatureVocab(CompositeVocab):
     def __init__(self, data=None, lang="", idx=0, sep="|", keyed=True):
         super().__init__(data, lang, idx=idx, sep=sep, keyed=keyed)
@@ -58,7 +54,6 @@ class MultiVocab(BaseMultiVocab):
     def load_state_dict(cls, state_dict):
         class_dict = {'CharVocab': CharVocab,
                 'WordVocab': WordVocab,
-                'XPOSVocab': XPOSVocab,
                 'FeatureVocab': FeatureVocab}
         new = cls()
         assert '_key2class' in state_dict, "Cannot find class name mapping in state dict!"

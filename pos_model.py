@@ -62,19 +62,9 @@ class Tagger(nn.Module):
         if share_hid:
             clf_constructor = lambda insize, outsize: nn.Linear(insize, outsize)
         else:
-            self.xpos_hid = nn.Linear(self.args['hidden_dim'] * 2, self.args['deep_biaff_hidden_dim'] if not isinstance(vocab['xpos'], CompositeVocab) else self.args['composite_deep_biaff_hidden_dim'])
+            # self.xpos_hid = nn.Linear(self.args['hidden_dim'] * 2, self.args['deep_biaff_hidden_dim'] if not isinstance(vocab['xpos'], CompositeVocab) else self.args['composite_deep_biaff_hidden_dim'])
             self.ufeats_hid = nn.Linear(self.args['hidden_dim'] * 2, self.args['composite_deep_biaff_hidden_dim'])
             clf_constructor = lambda insize, outsize: BiaffineScorer(insize, self.args['tag_emb_dim'], outsize)
-
-        if isinstance(vocab['xpos'], CompositeVocab):
-            self.xpos_clf = nn.ModuleList()
-            for l in vocab['xpos'].lens():
-                self.xpos_clf.append(clf_constructor(self.args['composite_deep_biaff_hidden_dim'], l))
-        else:
-            self.xpos_clf = clf_constructor(self.args['deep_biaff_hidden_dim'], len(vocab['xpos']))
-            if share_hid:
-                self.xpos_clf.weight.data.zero_()
-                self.xpos_clf.bias.data.zero_()
 
         self.ufeats_clf = nn.ModuleList()
         for l in vocab['feats'].lens():
@@ -91,7 +81,7 @@ class Tagger(nn.Module):
         self.drop = nn.Dropout(args['dropout'])
         self.worddrop = WordDropout(args['word_dropout'])
 
-    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, word_orig_idx, sentlens, wordlens):
+    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, ufeats, pretrained, word_orig_idx, sentlens, wordlens):
         
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
@@ -133,33 +123,15 @@ class Tagger(nn.Module):
         loss = self.crit(upos_pred.view(-1, upos_pred.size(-1)), upos.view(-1))
 
         if self.share_hid:
-            xpos_hid = upos_hid
             ufeats_hid = upos_hid
-
             clffunc = lambda clf, hid: clf(self.drop(hid))
         else:
-            xpos_hid = F.relu(self.xpos_hid(self.drop(lstm_outputs)))
             ufeats_hid = F.relu(self.ufeats_hid(self.drop(lstm_outputs)))
-
             if self.training:
                 upos_emb = self.upos_emb(upos)
             else:
                 upos_emb = self.upos_emb(upos_pred.max(1)[1])
-
             clffunc = lambda clf, hid: clf(self.drop(hid), self.drop(upos_emb))
-
-        xpos = pack(xpos).data
-        if isinstance(self.vocab['xpos'], CompositeVocab):
-            xpos_preds = []
-            for i in range(len(self.vocab['xpos'])):
-                xpos_pred = clffunc(self.xpos_clf[i], xpos_hid)
-                loss += self.crit(xpos_pred.view(-1, xpos_pred.size(-1)), xpos[:, i].view(-1))
-                xpos_preds.append(pad(xpos_pred).max(2, keepdim=True)[1])
-            preds.append(torch.cat(xpos_preds, 2))
-        else:
-            xpos_pred = clffunc(self.xpos_clf, xpos_hid)
-            loss += self.crit(xpos_pred.view(-1, xpos_pred.size(-1)), xpos.view(-1))
-            preds.append(pad(xpos_pred).max(2)[1])
 
         ufeats_preds = []
         ufeats = pack(ufeats).data

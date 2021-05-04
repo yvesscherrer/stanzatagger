@@ -6,8 +6,7 @@ import torch
 
 from data import map_to_ids, get_long_tensor, get_float_tensor, sort_all
 from vocab import PAD_ID, VOCAB_PREFIX, CharVocab
-from pos_vocab import WordVocab, XPOSVocab, FeatureVocab, MultiVocab
-from xpos_vocab_factory import xpos_vocab_factory
+from pos_vocab import WordVocab, FeatureVocab, MultiVocab
 from doc import *
 
 logger = logging.getLogger('stanza')
@@ -55,12 +54,10 @@ class DataLoader:
         charvocab = CharVocab(data, self.args['shorthand'])
         wordvocab = WordVocab(data, self.args['shorthand'], cutoff=7, lower=True)
         uposvocab = WordVocab(data, self.args['shorthand'], idx=1)
-        xposvocab = xpos_vocab_factory(data, self.args['shorthand'])
-        featsvocab = FeatureVocab(data, self.args['shorthand'], idx=3)
+        featsvocab = FeatureVocab(data, self.args['shorthand'], idx=2)
         vocab = MultiVocab({'char': charvocab,
                             'word': wordvocab,
                             'upos': uposvocab,
-                            'xpos': xposvocab,
                             'feats': featsvocab})
         return vocab
 
@@ -70,8 +67,7 @@ class DataLoader:
             processed_sent = [vocab['word'].map([w[0] for w in sent])]
             processed_sent += [[vocab['char'].map([x for x in w[0]]) for w in sent]]
             processed_sent += [vocab['upos'].map([w[1] for w in sent])]
-            processed_sent += [vocab['xpos'].map([w[2] for w in sent])]
-            processed_sent += [vocab['feats'].map([w[3] for w in sent])]
+            processed_sent += [vocab['feats'].map([w[2] for w in sent])]
             if pretrain_vocab is not None:
                 # always use lowercase lookup in pretrained vocab
                 processed_sent += [pretrain_vocab.map([w[0].lower() for w in sent])]
@@ -92,7 +88,7 @@ class DataLoader:
         batch = self.data[key]
         batch_size = len(batch)
         batch = list(zip(*batch))
-        assert len(batch) == 6
+        assert len(batch) == 5
 
         # sort sentences by lens for easy RNN operations
         lens = [len(x) for x in batch[0]]
@@ -113,18 +109,17 @@ class DataLoader:
         wordchars_mask = torch.eq(wordchars, PAD_ID)
 
         upos = get_long_tensor(batch[2], batch_size)
-        xpos = get_long_tensor(batch[3], batch_size)
-        ufeats = get_long_tensor(batch[4], batch_size)
-        pretrained = get_long_tensor(batch[5], batch_size)
+        ufeats = get_long_tensor(batch[3], batch_size)
+        pretrained = get_long_tensor(batch[4], batch_size)
         sentlens = [len(x) for x in batch[0]]
-        return words, words_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, orig_idx, word_orig_idx, sentlens, word_lens
+        return words, words_mask, wordchars, wordchars_mask, upos, ufeats, pretrained, orig_idx, word_orig_idx, sentlens, word_lens
 
     def __iter__(self):
         for i in range(self.__len__()):
             yield self.__getitem__(i)
 
     def load_doc(self, doc):
-        data = doc.get([TEXT, UPOS, XPOS, FEATS], as_sentences=True)
+        data = doc.get([TEXT, UPOS, FEATS], as_sentences=True)
         data = self.resolve_none(data)
         return data
 

@@ -458,6 +458,7 @@ def evaluate(gold_ud, system_ud):
         "XPOS": alignment_score(alignment, lambda w, _: w.columns[XPOS]),
         "UFeats": alignment_score(alignment, lambda w, _: w.columns[FEATS]),
         "AllTags": alignment_score(alignment, lambda w, _: (w.columns[UPOS], w.columns[XPOS], w.columns[FEATS])),
+        "AllUTags": alignment_score(alignment, lambda w, _: (w.columns[UPOS], w.columns[FEATS])),
         "Lemmas": alignment_score(alignment, lambda w, ga: w.columns[LEMMA] if ga(w).columns[LEMMA] != "_" else "_"),
         "UAS": alignment_score(alignment, lambda w, ga: ga(w.parent)),
         "LAS": alignment_score(alignment, lambda w, ga: (ga(w.parent), w.columns[DEPREL])),
@@ -510,7 +511,7 @@ def main():
         else:
             print("Metric     | Precision |    Recall |  F1 Score | AligndAcc")
         print("-----------+-----------+-----------+-----------+-----------")
-        for metric in["Tokens", "Sentences", "Words", "UPOS", "XPOS", "UFeats", "AllTags", "Lemmas", "UAS", "LAS", "CLAS", "MLAS", "BLEX"]:
+        for metric in["Tokens", "Sentences", "Words", "UPOS", "XPOS", "UFeats", "AllTags", "AllUTags", "Lemmas", "UAS", "LAS", "CLAS", "MLAS", "BLEX"]:
             if args.counts:
                 print("{:11}|{:10} |{:10} |{:10} |{:10}".format(
                     metric,
