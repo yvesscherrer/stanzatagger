@@ -7,57 +7,10 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence, pack_s
 
 from packed_lstm import PackedLSTM
 
-class HLSTMCell(nn.modules.rnn.RNNCellBase):
-    """
-    A Highway LSTM Cell as proposed in Zhang et al. (2018) Highway Long Short-Term Memory RNNs for 
-    Distant Speech Recognition.
-    """
-    def __init__(self, input_size, hidden_size, bias=True):
-        super(HLSTMCell, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-
-        # LSTM parameters
-        self.Wi = nn.Linear(input_size + hidden_size, hidden_size, bias=bias)
-        self.Wf = nn.Linear(input_size + hidden_size, hidden_size, bias=bias)
-        self.Wo = nn.Linear(input_size + hidden_size, hidden_size, bias=bias)
-        self.Wg = nn.Linear(input_size + hidden_size, hidden_size, bias=bias)
-
-        # highway gate parameters
-        self.gate = nn.Linear(input_size + 2 * hidden_size, hidden_size, bias=bias)
-
-    def forward(self, input, c_l_minus_one=None, hx=None):
-        self.check_forward_input(input)
-        if hx is None:
-            hx = input.new_zeros(input.size(0), self.hidden_size, requires_grad=False)
-            hx = (hx, hx)
-        if c_l_minus_one is None:
-            c_l_minus_one = input.new_zeros(input.size(0), self.hidden_size, requires_grad=False)
-
-        self.check_forward_hidden(input, hx[0], '[0]')
-        self.check_forward_hidden(input, hx[1], '[1]')
-        self.check_forward_hidden(input, c_l_minus_one, 'c_l_minus_one')
-
-        # vanilla LSTM computation
-        rec_input = torch.cat([input, hx[0]], 1)
-        i = F.sigmoid(self.Wi(rec_input))
-        f = F.sigmoid(self.Wf(rec_input))
-        o = F.sigmoid(self.Wo(rec_input))
-        g = F.tanh(self.Wg(rec_input))
-
-        # highway gates
-        gate = F.sigmoid(self.gate(torch.cat([c_l_minus_one, hx[1], input], 1)))
-
-        c = gate * c_l_minus_one + f * hx[1] + i * g
-        h = o * F.tanh(c)
-
-        return h, c
-
-# Highway LSTM network, does NOT use the HLSTMCell above
+# Highway LSTM network
 class HighwayLSTM(nn.Module):
     """
-    A Highway LSTM network, as used in the original Tensorflow version of the Dozat parser. Note that this
-    is independent from the HLSTMCell above.
+    A Highway LSTM network, as used in the original Tensorflow version of the Dozat parser.
     """
     def __init__(self, input_size, hidden_size,
                  num_layers=1, bias=True, batch_first=False,
