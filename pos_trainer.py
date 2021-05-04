@@ -10,7 +10,7 @@ import torch
 from torch import nn
 
 from trainer import Trainer as BaseTrainer
-import utils, loss
+import utils
 from pos_model import Tagger
 from pos_vocab import MultiVocab
 

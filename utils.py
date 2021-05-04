@@ -114,24 +114,21 @@ def keep_partial_grad(grad, topk):
     return grad
 
 # other utils
-def ensure_dir(d, verbose=True):
+def ensure_dir(d):
     if not os.path.exists(d):
-        if verbose:
-            print("Directory {} do not exist; creating...".format(d))
+        logger.info("Directory {} does not exist; creating...".format(d))
         os.makedirs(d)
 
-def save_config(config, path, verbose=True):
+def save_config(config, path):
     with open(path, 'w') as outfile:
         json.dump(config, outfile, indent=2)
-    if verbose:
-        print("Config saved to file {}".format(path))
+    logger.info("Config saved to file {}".format(path))
     return config
 
-def load_config(path, verbose=True):
+def load_config(path):
     with open(path) as f:
         config = json.load(f)
-    if verbose:
-        print("Config loaded from file {}".format(path))
+    logger.info("Config loaded from file {}".format(path))
     return config
 
 def print_config(config):

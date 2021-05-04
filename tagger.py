@@ -29,7 +29,6 @@ from pretrain import Pretrain
 from data import augment_punct
 from doc import *
 from conll import CoNLL
-#from stanza.models import _training_logging
 
 logger = logging.getLogger('stanza')
 logger.setLevel(logging.DEBUG)
