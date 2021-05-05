@@ -7,7 +7,7 @@ import torch
 from data import map_to_ids, get_long_tensor, get_float_tensor, sort_all
 from vocab import PAD_ID, VOCAB_PREFIX, CharVocab
 from pos_vocab import WordVocab, FeatureVocab, MultiVocab
-from doc import *
+from doc import TEXT, UPOS, FEATS
 
 logger = logging.getLogger('stanza')
 

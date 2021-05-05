@@ -27,7 +27,7 @@ import pos_scorer as scorer
 import utils
 from pretrain import Pretrain
 from data import augment_punct
-from doc import *
+from doc import Document, TEXT, UPOS, FEATS
 from conll import CoNLL
 
 logger = logging.getLogger('stanza')
@@ -187,6 +187,7 @@ def train(args):
     train_loss = 0
     while True:
         epoch += 1
+        epoch_start_time = time.time()
         do_break = False
         for i, batch in enumerate(train_batch):
             start_time = time.time()
@@ -238,7 +239,9 @@ def train(args):
                 break
 
         if do_break: break
-        logger.info("Finished epoch {} after step {}".format(epoch, global_step))
+
+        epoch_duration = time.time() - epoch_start_time
+        logger.info("Finished epoch {} after step {} ({:.3f} sec/epoch)".format(epoch, global_step, epoch_duration))
         train_batch.reshuffle()
 
     logger.info("Training ended with {} steps in epoch {}.".format(global_step, epoch))
