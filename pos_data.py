@@ -7,7 +7,7 @@ import torch
 from data import map_to_ids, get_long_tensor, get_float_tensor, sort_all
 from vocab import PAD_ID, VOCAB_PREFIX, CharVocab
 from pos_vocab import WordVocab, FeatureVocab, MultiVocab
-from doc import TEXT, UPOS, FEATS
+#from doc import TEXT, UPOS, FEATS
 
 logger = logging.getLogger('stanza')
 
@@ -52,9 +52,9 @@ class DataLoader:
     def init_vocab(self, data):
         assert self.eval == False # for eval vocab must exist
         charvocab = CharVocab(data, idx=0)
-        wordvocab = WordVocab(data, idx=0, cutoff=7, lower=True)
-        uposvocab = WordVocab(data, idx=1)
-        featsvocab = FeatureVocab(data, idx=2)
+        wordvocab = WordVocab(data, idx=1, cutoff=7, lower=True)
+        uposvocab = WordVocab(data, idx=2)
+        featsvocab = FeatureVocab(data, idx=3)
         vocab = MultiVocab({'char': charvocab,
                             'word': wordvocab,
                             'upos': uposvocab,
@@ -64,13 +64,13 @@ class DataLoader:
     def preprocess(self, data, vocab, pretrain_vocab, args):
         processed = []
         for sent in data:
-            processed_sent = [vocab['word'].map([w[0] for w in sent])]
+            processed_sent = [vocab['word'].map([w[1] for w in sent])]
             processed_sent += [[vocab['char'].map([x for x in w[0]]) for w in sent]]
-            processed_sent += [vocab['upos'].map([w[1] for w in sent])]
-            processed_sent += [vocab['feats'].map([w[2] for w in sent])]
+            processed_sent += [vocab['upos'].map([w[2] for w in sent])]
+            processed_sent += [vocab['feats'].map([w[3] for w in sent])]
             if pretrain_vocab is not None:
                 # always use lowercase lookup in pretrained vocab
-                processed_sent += [pretrain_vocab.map([w[0].lower() for w in sent])]
+                processed_sent += [pretrain_vocab.map([w[1].lower() for w in sent])]
             else:
                 processed_sent += [[PAD_ID] * len(sent)]
             processed.append(processed_sent)
@@ -119,7 +119,8 @@ class DataLoader:
             yield self.__getitem__(i)
 
     def load_doc(self, doc):
-        data = doc.get([TEXT, UPOS, FEATS], as_sentences=True)
+        #data = doc.get([TEXT, UPOS, FEATS], as_sentences=True)
+        data = doc.provide_data()
         data = self.resolve_none(data)
         return data
 

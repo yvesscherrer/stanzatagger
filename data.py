@@ -10,7 +10,10 @@ import random
 import torch
 
 import vocab
-from doc import HEAD, ID, UPOS
+
+ID = 'id'
+UPOS = 'upos'
+HEAD = 'head'
 
 logger = logging.getLogger('stanza')
 
