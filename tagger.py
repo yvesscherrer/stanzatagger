@@ -26,9 +26,6 @@ from pos_trainer import Trainer
 #import pos_scorer as scorer
 import utils
 from pretrain import Pretrain
-from data import augment_punct
-#from doc import Document, TEXT, UPOS, FEATS
-#from conll import CoNLL
 from document import Document
 
 logger = logging.getLogger('stanza')
@@ -91,7 +88,7 @@ def parse_args(args=None):
     parser.add_argument('--cuda', type=bool, default=torch.cuda.is_available())
     parser.add_argument('--cpu', action='store_true', help='Ignore CUDA.')
 
-    parser.add_argument('--augment_nopunct', type=float, default=None, help='Augment the training data by copying this fraction of punct-ending sentences as non-punct.  Default of None will aim for roughly 10%')
+    parser.add_argument('--augment_nopunct', nargs='?', type=float, const=None, help='Augment the training data by copying this fraction of punct-ending sentences as non-punct.  Default of None will aim for roughly 10%')
 
     args = parser.parse_args(args=args)
     return args
@@ -142,21 +139,12 @@ def train(args):
 
     # load data
     logger.info("Loading data with batch size {}...".format(args['batch_size']))
-    # train_data is now a list of sentences, where each sentence is a
-    # list of words, in which each word is a dict of conll attributes
-    #train_data = CoNLL.conll2dict(input_file=args['train_file'])
-    # possibly augment the training data with some amount of fake data
-    # based on the options chosen
-    #logger.info("Original data size: {}".format(len(train_data)))
-    #TODO train_data.extend(augment_punct(train_data, args['augment_nopunct'],
-    #                                keep_original_sentences=False))
-    #logger.info("Augmented data size: {}".format(len(train_data)))
-    #train_doc = Document(train_data)
     train_doc = Document()
     train_doc.load_from_file(args['train_file'])
+    if 'augment_nopunct' in args:
+        train_doc.augment_punct(args['augment_nopunct'])
     train_data = DataLoader(train_doc, args['batch_size'], args, pretrain, evaluation=False)
     vocab = train_data.vocab
-    #dev_doc = Document(CoNLL.conll2dict(input_file=args['eval_file']))
     dev_doc = Document()
     dev_doc.load_from_file(args['eval_file'])
     dev_data = DataLoader(dev_doc, args['batch_size'], args, pretrain, vocab=vocab, evaluation=True, sort_during_eval=True)
@@ -211,9 +199,7 @@ def train(args):
                     preds = trainer.predict(dev_batch)
                     dev_preds += preds
                 dev_preds = utils.unsort(dev_preds, dev_data.data_orig_idx)
-                #dev_data.doc.set([UPOS, FEATS], [y for x in dev_preds for y in x])
                 dev_data.doc.add_predictions(dev_preds)
-                #CoNLL.dict2conll(dev_data.doc.to_dict(), system_pred_file)
                 dev_data.doc.write_to_file(system_pred_file)
                 #_, _, dev_score = scorer.score(system_pred_file, gold_file)
                 results = dev_data.doc.evaluate()
@@ -286,7 +272,6 @@ def evaluate(args):
 
     # load data
     logger.info("Loading data with batch size {}...".format(args['batch_size']))
-    #doc = Document(CoNLL.conll2dict(input_file=args['eval_file']))
     doc = Document()
     doc.load_from_file(args['eval_file'])
     data = DataLoader(doc, args['batch_size'], loaded_args, pretrain, vocab=vocab, evaluation=True, sort_during_eval=True)
@@ -301,9 +286,7 @@ def evaluate(args):
     preds = utils.unsort(preds, data.data_orig_idx)
 
     # write to file and score
-    #data.doc.set([UPOS, FEATS], [y for x in preds for y in x])
     data.doc.add_predictions(preds)
-    #CoNLL.dict2conll(data.doc.to_dict(), system_pred_file)
     data.doc.write_to_file(system_pred_file)
     results = data.doc.evaluate()
     for k, v in results.items():

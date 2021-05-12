@@ -135,6 +135,91 @@ class Document(object):
         return results
 
 
+    def get_augment_ratio(self, should_augment_predicate, can_augment_predicate, desired_ratio=0.1, max_ratio=0.5):
+        """
+        Returns X so that if you randomly select X * N sentences, you get 10%
+
+        The ratio will be chosen in the assumption that the final dataset
+        is of size N rather than N + X * N.
+
+        should_augment_predicate: returns True if the sentence has some
+        feature which we may want to change occasionally.  for example,
+        depparse sentences which end in punct
+        can_augment_predicate: in the depparse sentences example, it is
+        technically possible for the punct at the end to be the parent
+        of some other word in the sentence.  in that case, the sentence
+        should not be chosen.  should be at least as restrictive as
+        should_augment_predicate
+        """
+        n_data = len(self.sentences)
+        n_should_augment = sum(should_augment_predicate(sentence) for sentence in self.sentences)
+        n_can_augment = sum(can_augment_predicate(sentence) for sentence in self.sentences)
+        n_error = sum(can_augment_predicate(sentence) and not should_augment_predicate(sentence)
+                    for sentence in self.sentences)
+        print(n_data, n_should_augment, n_can_augment, n_error)
+        if n_error > 0:
+            raise AssertionError("can_augment_predicate allowed sentences not allowed by should_augment_predicate")
+
+        if n_can_augment == 0:
+            logger.warning("Found no sentences which matched can_augment_predicate {}".format(can_augment_predicate))
+            return 0.0
+        n_needed = n_data * desired_ratio - (n_data - n_should_augment)
+        print(n_needed)
+        # if we want 10%, for example, and more than 10% already matches, we can skip
+        if n_needed < 0:
+            return 0.0
+        ratio = n_needed / n_can_augment
+        if ratio > max_ratio:
+            return max_ratio
+        return ratio
+
+    def augment_punct(self, augment_ratio=None):
+
+        """
+        Adds extra training data to compensate for some models having all sentences end with PUNCT
+
+        Some of the models (for example, UD_Hebrew-HTB) have the flaw that
+        all of the training sentences end with PUNCT.  The model therefore
+        learns to finish every sentence with punctuation, even if it is
+        given a sentence with non-punct at the end.
+
+        One simple way to fix this is to train on some fraction of training data with punct.
+
+        Params:
+        train_data: list of list of dicts, eg a conll doc
+        augment_ratio: the fraction to augment.  if None, a best guess is made to get to 10%
+
+        TODO: do this dynamically, as part of the DataLoader or elsewhere?
+        One complication is the data comes back from the DataLoader as
+        tensors & indices, so it is much more complicated to manipulate
+        """
+        if len(self.sentences) == 0:
+            return []
+        
+        can_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == "PUNCT"
+        should_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == "PUNCT"
+
+        if augment_ratio is None:
+            augment_ratio = self.get_augment_ratio(should_augment_nopunct, can_augment_nopunct)
+            logger.info("Determined augmentation ratio {:.2f}".format(augment_ratio))
+
+        if augment_ratio <= 0:
+            logger.info("Skipping data augmentation")
+            return
+
+        new_data = []
+        for sentence in self.sentences:
+            if can_augment_nopunct(sentence):
+                if random.random() < augment_ratio and len(sentence) > 1:
+                    # todo: could deep copy the words
+                    #       or not deep copy any of this
+                    new_sentence = sentence.copy(remove_last=True)
+                    new_data.append(new_sentence)
+        
+        self.sentences.extend(new_data)
+        logger.info("{} sentences available after augmentation".format(len(self.sentences)))
+
+
 class Sentence(object):
     def __init__(self):
         self.tokens = []
@@ -148,6 +233,16 @@ class Sentence(object):
     def add_token(self, token):
         t = Token(token)
         self.tokens.append(t)
+    
+    def copy(self, remove_last=False):
+        new = Sentence()
+        if remove_last:
+            for t in self.tokens[:-1]:
+                new.add_token(t)
+        else:
+            for t in self.tokens:
+                new.add_token(t)
+        return new
 
 
 class Token(object):
