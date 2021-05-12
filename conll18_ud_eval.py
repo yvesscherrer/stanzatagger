@@ -343,7 +343,7 @@ def evaluate(gold_ud, system_ud):
             if filter_fn is None or filter_fn(words.gold_word):
                 if key_fn(words.gold_word, gold_aligned_gold) == key_fn(words.system_word, gold_aligned_system):
                     correct += 1
-
+        #print("CoNLL18", gold, system, correct, aligned)
         return Score(gold, system, correct, aligned)
 
     def beyond_end(words, i, multiword_span_end):

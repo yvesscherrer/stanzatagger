@@ -23,7 +23,7 @@ from torch import nn, optim
 import pos_data
 from pos_data import DataLoader
 from pos_trainer import Trainer
-import pos_scorer as scorer
+#import pos_scorer as scorer
 import utils
 from pretrain import Pretrain
 from data import augment_punct
@@ -154,19 +154,19 @@ def train(args):
     #train_doc = Document(train_data)
     train_doc = Document()
     train_doc.load_from_file(args['train_file'])
-    train_batch = DataLoader(train_doc, args['batch_size'], args, pretrain, evaluation=False)
-    vocab = train_batch.vocab
+    train_data = DataLoader(train_doc, args['batch_size'], args, pretrain, evaluation=False)
+    vocab = train_data.vocab
     #dev_doc = Document(CoNLL.conll2dict(input_file=args['eval_file']))
     dev_doc = Document()
     dev_doc.load_from_file(args['eval_file'])
-    dev_batch = DataLoader(dev_doc, args['batch_size'], args, pretrain, vocab=vocab, evaluation=True, sort_during_eval=True)
+    dev_data = DataLoader(dev_doc, args['batch_size'], args, pretrain, vocab=vocab, evaluation=True, sort_during_eval=True)
 
     # pred and gold path
     system_pred_file = args['output_file']
     gold_file = args['gold_file']
 
     # skip training if the language does not have training or dev data
-    if len(train_batch) == 0 or len(dev_batch) == 0:
+    if len(train_data) == 0 or len(dev_data) == 0:
         logger.info("Skip training because no data available...")
         return
 
@@ -183,7 +183,7 @@ def train(args):
     format_str = 'Finished step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
 
     if args['adapt_eval_interval']:
-        args['eval_interval'] = utils.get_adaptive_eval_interval(dev_batch.num_examples, 2000, args['eval_interval'])
+        args['eval_interval'] = utils.get_adaptive_eval_interval(dev_data.num_examples, 2000, args['eval_interval'])
         logger.info("Evaluating the model every {} steps...".format(args['eval_interval']))
 
     using_amsgrad = False
@@ -194,7 +194,7 @@ def train(args):
         epoch += 1
         epoch_start_time = time.time()
         do_break = False
-        for i, batch in enumerate(train_batch):
+        for i, batch in enumerate(train_data):
             start_time = time.time()
             global_step += 1
             loss = trainer.update(batch, eval=False) # update step
@@ -207,15 +207,19 @@ def train(args):
                 # eval on dev
                 logger.info("Evaluating on dev set...")
                 dev_preds = []
-                for batch in dev_batch:
-                    preds = trainer.predict(batch)
+                for dev_batch in dev_data:
+                    preds = trainer.predict(dev_batch)
                     dev_preds += preds
-                dev_preds = utils.unsort(dev_preds, dev_batch.data_orig_idx)
-                #dev_batch.doc.set([UPOS, FEATS], [y for x in dev_preds for y in x])
-                dev_batch.doc.add_predictions(dev_preds)
-                #CoNLL.dict2conll(dev_batch.doc.to_dict(), system_pred_file)
-                dev_batch.doc.write_to_file(system_pred_file)
-                _, _, dev_score = scorer.score(system_pred_file, gold_file)
+                dev_preds = utils.unsort(dev_preds, dev_data.data_orig_idx)
+                #dev_data.doc.set([UPOS, FEATS], [y for x in dev_preds for y in x])
+                dev_data.doc.add_predictions(dev_preds)
+                #CoNLL.dict2conll(dev_data.doc.to_dict(), system_pred_file)
+                dev_data.doc.write_to_file(system_pred_file)
+                #_, _, dev_score = scorer.score(system_pred_file, gold_file)
+                results = dev_data.doc.evaluate()
+                dev_score = results["POS+FEATS micro-F1"]
+                for k, v in results.items():
+                    logger.info("{}: {:.2f}%".format(k, 100*v))
 
                 train_loss = train_loss / args['eval_interval'] # avg loss per batch
                 logger.info("step {}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, train_loss, dev_score))
@@ -249,7 +253,7 @@ def train(args):
 
         epoch_duration = time.time() - epoch_start_time
         logger.info("Finished epoch {} after step {} ({:.3f} sec/epoch)".format(epoch, global_step, epoch_duration))
-        train_batch.reshuffle()
+        train_data.reshuffle()
 
     logger.info("Training ended with {} steps in epoch {}.".format(global_step, epoch))
 
@@ -285,27 +289,26 @@ def evaluate(args):
     #doc = Document(CoNLL.conll2dict(input_file=args['eval_file']))
     doc = Document()
     doc.load_from_file(args['eval_file'])
-    batch = DataLoader(doc, args['batch_size'], loaded_args, pretrain, vocab=vocab, evaluation=True, sort_during_eval=True)
-    if len(batch) > 0:
+    data = DataLoader(doc, args['batch_size'], loaded_args, pretrain, vocab=vocab, evaluation=True, sort_during_eval=True)
+    if len(data) > 0:
         logger.info("Start evaluation...")
         preds = []
-        for i, b in enumerate(batch):
-            preds += trainer.predict(b)
+        for i, batch in enumerate(data):
+            preds += trainer.predict(batch)
     else:
         # skip eval if dev data does not exist
         preds = []
-    preds = utils.unsort(preds, batch.data_orig_idx)
+    preds = utils.unsort(preds, data.data_orig_idx)
 
     # write to file and score
-    #batch.doc.set([UPOS, FEATS], [y for x in preds for y in x])
-    batch.doc.add_predictions(preds)
-    #CoNLL.dict2conll(batch.doc.to_dict(), system_pred_file)
-    batch.doc.write_to_file(system_pred_file)
-
-    if gold_file is not None:
-        _, _, score = scorer.score(system_pred_file, gold_file)
-
-        logger.info("Tagger score: {:.2f}".format(score*100))
+    #data.doc.set([UPOS, FEATS], [y for x in preds for y in x])
+    data.doc.add_predictions(preds)
+    #CoNLL.dict2conll(data.doc.to_dict(), system_pred_file)
+    data.doc.write_to_file(system_pred_file)
+    results = data.doc.evaluate()
+    for k, v in results.items():
+        logger.info("{}: {:.2f}%".format(k, 100*v))
+    
 
 if __name__ == '__main__':
     main()

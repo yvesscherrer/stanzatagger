@@ -1,23 +1,16 @@
-# reimplementation of stanza.models.common.doc and stanza.utils.conll that allows for more flexibility with not-quite-CoNLL-conform datasets
+# Reimplementation of stanza.models.common.doc and stanza.utils.conll that allows for more flexibility with not-quite-CoNLL-conform datasets
 
 import logging
 import io
+from evaluator import Evaluator, UNIV_FEATURES
 
 logger = logging.getLogger('stanza')
 
-UNIV_FEATURES = {
-    "PronType", "NumType", "Poss", "Reflex", "Foreign", "Abbr", "Gender",
-    "Animacy", "Number", "Case", "Definite", "Degree", "VerbForm", "Mood",
-    "Tense", "Aspect", "Voice", "Evident", "Polarity", "Person", "Polite"
-}
-
 class Document(object):
-    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, ignore_comments=True):
+    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}):
         self.read_positions = {x: read_positions[x] for x in read_positions if read_positions[x] >= 0}
         self.write_positions = {x: write_positions[x] for x in write_positions if write_positions[x] >= 0}
-        self.ignore_comments = ignore_comments
-        if "id" not in self.read_positions and self.ignore_comments:
-            logger.info("Caution! Your settings will ignore all lines starting with '#'.")
+        self.ignore_comments = ("id" in read_positions and read_positions["id"] == 0)
         self.sentences = []
     
     def __len__(self):
@@ -107,36 +100,39 @@ class Document(object):
             assert(ti == len(sent_array))
     
     def evaluate(self):
-        pos_correct, pos_total = 0, 0
-        feats_f1_list = []
-        ufeats_f1_list = []
+        if "pos" not in self.read_positions and "feats" not in self.read_positions:
+            logger.info("Cannot evaluate predictions because gold annotations are not available.")
+            return {}
+
+        evaluator = Evaluator()
         for sent in self.sentences:
             for token in sent:
+                pred_feats = {}
+                gold_feats = {}
                 if "pos" in token.pred and "pos" in self.read_positions:
-                    pos_total += 1
-                    if token.pred["pos"] == token.given[self.read_positions["pos"]]:
-                        pos_correct += 1
+                    pred_feats.update({"POS": token.pred["pos"]})
+                    gold_feats.update({"POS": token.given[self.read_positions["pos"]]})
                 
                 if "feats" in token.pred and "feats" in self.read_positions:
-                    if token.given[self.read_positions["feats"]] in ("_", ""):
-                        feats_gold = set()
+                    if token.pred["feats"] not in ("_", ""):
+                        pf = dict([x.split("=", 1) for x in token.pred["feats"].split("|")])
+                        pred_feats.update(pf)
                     else:
-                        feats_gold = set(token.given[self.read_positions["feats"]].split("|"))
-                    if token.pred["feats"] in ("_", ""):
-                        feats_pred = set()
+                        pf = {}
+                    if token.given[self.read_positions["feats"]] not in ("_", ""):
+                        gf = dict([x.split("=", 1) for x in token.given[self.read_positions["feats"]].split("|")])
+                        gold_feats.update(gf)
                     else:
-                        feats_pred = set(token.pred["feats"].split("|"))
-                    feats_common = feats_gold & feats_pred
-                    p, r, f1 = eval(len(feats_common), len(feats_gold), len(feats_pred))
-                    feats_f1_list.append(f1)
+                        gf = {}
+                evaluator.add_instance(gold_feats, pred_feats)
 
-                    ufeats_gold = set([x for x in feats_gold if x.split("=",1)[0] in UNIV_FEATURES])
-                    ufeats_pred = set([x for x in feats_pred if x.split("=",1)[0] in UNIV_FEATURES])
-                    ufeats_common = ufeats_gold & ufeats_pred
-                    up, ur, uf1 = eval(len(ufeats_common), len(ufeats_gold), len(ufeats_pred))
-                    ufeats_f1_list.append(uf1)
-    
-        return {"POS acc": pos_correct / pos_total}
+        results = {}
+        results["POS acc"] = evaluator.acc(att="POS")
+        results["FEATS micro-F1"] = evaluator.mic_f1(excl=["POS"])
+        results["UFEATS micro-F1"] = evaluator.mic_f1(incl=UNIV_FEATURES)
+        results["POS+FEATS micro-F1"] = evaluator.mic_f1()
+        results["POS+UFEATS micro-F1"] = evaluator.mic_f1(incl=["POS"]+UNIV_FEATURES)
+        return results
 
 
 class Sentence(object):
@@ -158,12 +154,3 @@ class Token(object):
     def __init__(self, token):
         self.given = token
         self.pred = {}
-
-
-def eval(corr, gold, pred):
-    if gold <= 0 or pred <= 0 or corr <= 0:
-        return 0
-    r = corr / gold
-    p = corr / pred
-    f1 = (2 * r * p) / (r + p)
-    return p, r, f1
