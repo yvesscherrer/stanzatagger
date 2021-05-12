@@ -2,6 +2,7 @@
 
 import logging
 import io
+import random
 from evaluator import Evaluator, UNIV_FEATURES
 
 logger = logging.getLogger('stanza')
@@ -156,7 +157,6 @@ class Document(object):
         n_can_augment = sum(can_augment_predicate(sentence) for sentence in self.sentences)
         n_error = sum(can_augment_predicate(sentence) and not should_augment_predicate(sentence)
                     for sentence in self.sentences)
-        print(n_data, n_should_augment, n_can_augment, n_error)
         if n_error > 0:
             raise AssertionError("can_augment_predicate allowed sentences not allowed by should_augment_predicate")
 
@@ -164,7 +164,6 @@ class Document(object):
             logger.warning("Found no sentences which matched can_augment_predicate {}".format(can_augment_predicate))
             return 0.0
         n_needed = n_data * desired_ratio - (n_data - n_should_augment)
-        print(n_needed)
         # if we want 10%, for example, and more than 10% already matches, we can skip
         if n_needed < 0:
             return 0.0

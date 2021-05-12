@@ -20,8 +20,7 @@ import random
 import torch
 from torch import nn, optim
 
-import pos_data
-from pos_data import DataLoader
+from data import DataLoader
 from pos_trainer import Trainer
 #import pos_scorer as scorer
 import utils
