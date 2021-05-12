@@ -9,7 +9,6 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence, pack_s
 from biaffine import BiaffineScorer
 from hlstm import HighwayLSTM
 from dropout import WordDropout
-from vocab import CompositeVocab
 from char_model import CharacterModel
 
 class Tagger(nn.Module):

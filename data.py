@@ -4,8 +4,7 @@ import random
 import logging
 import torch
 
-from vocab import PAD_ID, UNK_ID, CharVocab
-from pos_vocab import WordVocab, FeatureVocab, MultiVocab
+from vocab import PAD_ID, UNK_ID, CharVocab, WordVocab, FeatureVocab, MultiVocab
 
 logger = logging.getLogger('stanza')
 

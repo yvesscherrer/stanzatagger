@@ -10,8 +10,8 @@ import torch
 from torch import nn
 
 import utils
-from pos_model import Tagger
-from pos_vocab import MultiVocab
+from model import Tagger
+from vocab import MultiVocab
 
 logger = logging.getLogger('stanza')
 
