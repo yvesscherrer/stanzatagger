@@ -21,7 +21,7 @@ import torch
 from torch import nn, optim
 
 from data import DataLoader
-from pos_trainer import Trainer
+from trainer import Trainer
 #import pos_scorer as scorer
 import utils
 from pretrain import Pretrain
