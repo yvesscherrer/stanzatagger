@@ -232,10 +232,10 @@ class Sentence(object):
         new = Sentence()
         if remove_last:
             for t in self.tokens[:-1]:
-                new.add_token(t)
+                new.add_token(t.given)
         else:
             for t in self.tokens:
-                new.add_token(t)
+                new.add_token(t.given)
         return new
 
 
