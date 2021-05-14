@@ -2,8 +2,6 @@
 
 from copy import copy
 from collections import Counter, OrderedDict
-import os
-import pickle
 
 
 PAD = '<PAD>'

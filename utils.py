@@ -5,7 +5,6 @@ Utility functions.
 """
 import logging
 import os
-from collections import Counter
 import random
 import json
 import unicodedata

@@ -8,21 +8,16 @@ For details please refer to paper: https://nlp.stanford.edu/pubs/qi2018universal
 
 # was stanza.models.tagger
 
-import sys
 import os
-import shutil
 import time
-from datetime import datetime
 import argparse
 import logging
 import numpy as np
-import random
 import torch
-from torch import nn, optim
+from torch import optim
 
 from data import DataLoader
 from trainer import Trainer
-#import pos_scorer as scorer
 import utils
 from pretrain import Pretrain
 from document import Document
@@ -34,6 +29,7 @@ log_formatter = logging.Formatter(fmt="%(asctime)s %(levelname)s: %(message)s",
                               datefmt='%Y-%m-%d %H:%M:%S')
 log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
+
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
@@ -150,7 +146,6 @@ def train(args):
 
     # pred and gold path
     system_pred_file = args['output_file']
-    gold_file = args['gold_file']
 
     # skip training if the language does not have training or dev data
     if len(train_data) == 0 or len(dev_data) == 0:
@@ -200,9 +195,9 @@ def train(args):
                 dev_preds = utils.unsort(dev_preds, dev_data.data_orig_idx)
                 dev_data.doc.add_predictions(dev_preds)
                 dev_data.doc.write_to_file(system_pred_file)
-                #_, _, dev_score = scorer.score(system_pred_file, gold_file)
                 results = dev_data.doc.evaluate()
-                dev_score = results["POS+FEATS micro-F1"]
+                #dev_score = results["POS+FEATS micro-F1"]  # more intuitive
+                dev_score = results["UFEATS exact match"]   # for backwards compatibility
                 for k, v in results.items():
                     logger.info("{}: {:.2f}%".format(k, 100*v))
 
@@ -253,7 +248,6 @@ def train(args):
 def evaluate(args):
     # file paths
     system_pred_file = args['output_file']
-    gold_file = args['gold_file']
     model_file = model_file_name(args)
 
     pretrain = load_pretrain(args)

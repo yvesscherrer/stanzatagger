@@ -3,7 +3,7 @@
 import logging
 import io
 import random
-from evaluator import Evaluator, UNIV_FEATURES
+from evaluator import Evaluator, POS_KEY
 
 logger = logging.getLogger('stanza')
 
@@ -105,34 +105,29 @@ class Document(object):
             logger.info("Cannot evaluate predictions because gold annotations are not available.")
             return {}
 
-        evaluator = Evaluator()
+        feats_evaluator = Evaluator(mode="by_feats")
+        exact_evaluator = Evaluator(mode="exact", only_univ=True)
         for sent in self.sentences:
             for token in sent:
                 pred_feats = {}
-                gold_feats = {}
-                if "pos" in token.pred and "pos" in self.read_positions:
-                    pred_feats.update({"POS": token.pred["pos"]})
-                    gold_feats.update({"POS": token.given[self.read_positions["pos"]]})
-                
+                gold_feats = {}                
                 if "feats" in token.pred and "feats" in self.read_positions:
                     if token.pred["feats"] not in ("_", ""):
-                        pf = dict([x.split("=", 1) for x in token.pred["feats"].split("|")])
-                        pred_feats.update(pf)
-                    else:
-                        pf = {}
+                        pred_feats = dict([x.split("=", 1) for x in token.pred["feats"].split("|")])
                     if token.given[self.read_positions["feats"]] not in ("_", ""):
-                        gf = dict([x.split("=", 1) for x in token.given[self.read_positions["feats"]].split("|")])
-                        gold_feats.update(gf)
-                    else:
-                        gf = {}
-                evaluator.add_instance(gold_feats, pred_feats)
+                        gold_feats = dict([x.split("=", 1) for x in token.given[self.read_positions["feats"]].split("|")])
+                    exact_evaluator.add_instance(gold_feats, pred_feats)    # do not add POS here
+                
+                if "pos" in token.pred and "pos" in self.read_positions:
+                    pred_feats.update({POS_KEY: token.pred["pos"]})
+                    gold_feats.update({POS_KEY: token.given[self.read_positions["pos"]]})
+                    feats_evaluator.add_instance(gold_feats, pred_feats)
 
         results = {}
-        results["POS acc"] = evaluator.acc(att="POS")
-        results["FEATS micro-F1"] = evaluator.mic_f1(excl=["POS"])
-        results["UFEATS micro-F1"] = evaluator.mic_f1(incl=UNIV_FEATURES)
-        results["POS+FEATS micro-F1"] = evaluator.mic_f1()
-        results["POS+UFEATS micro-F1"] = evaluator.mic_f1(incl=["POS"]+UNIV_FEATURES)
+        results["POS accuracy"] = feats_evaluator.acc(att=POS_KEY)
+        results["FEATS micro-F1"] = feats_evaluator.micro_f1(excl=[POS_KEY])
+        results["POS+FEATS micro-F1"] = feats_evaluator.micro_f1()
+        results["UFEATS exact match"] = exact_evaluator.acc()
         return results
 
 

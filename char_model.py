@@ -5,9 +5,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence, pack_padded_sequence, PackedSequence
 
 from packed_lstm import PackedLSTM
-from utils import tensor_unsort, unsort
-from dropout import SequenceUnitDropout
-from vocab import UNK_ID, CharVocab
+from utils import tensor_unsort
 
 class CharacterModel(nn.Module):
     def __init__(self, args, vocab, pad=False, bidirectional=False, attention=True):
