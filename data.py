@@ -42,6 +42,16 @@ def sort_all(batch, lens):
     sorted_all = [list(t) for t in zip(*sorted(zip(*unsorted_all), reverse=True))]
     return sorted_all[2:], sorted_all[1]
 
+def unsort(sorted_list, oidx):
+    """
+    Unsort a sorted list, based on the original idx.
+    """
+    assert len(sorted_list) == len(oidx), "Number of list elements must match with original indices."
+    if len(sorted_list) == 0:
+        return []
+    _, unsorted = [list(t) for t in zip(*sorted(zip(oidx, sorted_list)))]
+    return unsorted
+
 
 class DataLoader:
     def __init__(self, doc, batch_size, args, pretrain, vocab=None, evaluation=False, sort_during_eval=False):
@@ -69,7 +79,7 @@ class DataLoader:
         if args.get('sample_train', 1.0) < 1.0 and not self.eval:
             keep = int(args['sample_train'] * len(data))
             data = random.sample(data, keep)
-            logger.debug("Subsample training set with rate {:g}".format(args['sample_train']))
+            logger.info("Subsample training set with rate {:g}".format(args['sample_train']))
 
         data = self.preprocess(data, self.vocab, self.pretrain_vocab, args)
         # shuffle for training
@@ -79,7 +89,7 @@ class DataLoader:
 
         # chunk into batches
         self.data = self.chunk_batches(data)
-        logger.debug("{} batches created.".format(len(self.data)))
+        logger.info("{} batches created{}.".format(len(self.data), " (one batch per sentence)" if self.batch_size < 0 else ""))
 
     def init_vocab(self, data):
         assert self.eval == False # for eval vocab must exist
@@ -178,17 +188,20 @@ class DataLoader:
         elif self.sort_during_eval:
             (data, ), self.data_orig_idx = sort_all([data], [len(x[0]) for x in data])
 
-        current = []
-        currentlen = 0
-        for x in data:
-            if len(x[0]) + currentlen > self.batch_size and currentlen > 0:
-                res.append(current)
-                current = []
-                currentlen = 0
-            current.append(x)
-            currentlen += len(x[0])
+        if self.batch_size < 0:
+            res = [[x] for x in data]
+        else:
+            current = []
+            currentlen = 0
+            for x in data:
+                if len(x[0]) + currentlen > self.batch_size and currentlen > 0:
+                    res.append(current)
+                    current = []
+                    currentlen = 0
+                current.append(x)
+                currentlen += len(x[0])
 
-        if currentlen > 0:
-            res.append(current)
+            if currentlen > 0:
+                res.append(current)
 
         return res

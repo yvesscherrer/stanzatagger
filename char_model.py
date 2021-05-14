@@ -3,9 +3,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence, pack_padded_sequence, PackedSequence
-
 from packed_lstm import PackedLSTM
-from utils import tensor_unsort
 
 class CharacterModel(nn.Module):
     def __init__(self, args, vocab, pad=False, bidirectional=False, attention=True):
@@ -55,3 +53,11 @@ class CharacterModel(nn.Module):
             res = pad_packed_sequence(res, batch_first=True)[0]
 
         return res
+
+def tensor_unsort(sorted_tensor, oidx):
+    """
+    Unsort a sorted tensor on its 0-th dimension, based on the original idx.
+    """
+    assert sorted_tensor.size(0) == len(oidx), "Number of list elements must match with original indices."
+    backidx = [x[0] for x in sorted(enumerate(oidx), key=lambda x: x[1])]
+    return sorted_tensor[backidx]

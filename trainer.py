@@ -4,16 +4,27 @@
 A trainer class to handle training and testing of models.
 """
 
-import sys
 import logging
 import torch
-from torch import nn
 
-import utils
 from model import Tagger
 from vocab import MultiVocab
+import data
 
 logger = logging.getLogger('stanza')
+
+
+def get_optimizer(name, parameters, lr, betas=(0.9, 0.999), eps=1e-8, momentum=0):
+    if name == 'sgd':
+        return torch.optim.SGD(parameters, lr=lr, momentum=momentum)
+    elif name == 'adagrad':
+        return torch.optim.Adagrad(parameters, lr=lr)
+    elif name == 'adam':
+        return torch.optim.Adam(parameters, lr=lr, betas=betas, eps=eps)
+    elif name == 'adamax':
+        return torch.optim.Adamax(parameters) # use default lr
+    else:
+        raise Exception("Unsupported optimizer: {}".format(name))
 
 def unpack_batch(batch, use_cuda):
     """ Unpack a batch from the data loader. """
@@ -67,7 +78,7 @@ class Trainer(object):
             self.model.cuda()
         else:
             self.model.cpu()
-        self.optimizer = utils.get_optimizer(self.args['optim'], self.parameters, self.args['lr'], betas=(0.9, self.args['beta2']), eps=1e-6)
+        self.optimizer = get_optimizer(self.args['optim'], self.parameters, self.args['lr'], betas=(0.9, self.args['beta2']), eps=1e-6)
 
     def update(self, batch, eval=False):
         inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
@@ -100,7 +111,7 @@ class Trainer(object):
 
         pred_tokens = [[[upos_seqs[i][j], feats_seqs[i][j]] for j in range(sentlens[i])] for i in range(batch_size)]
         if unsort:
-            pred_tokens = utils.unsort(pred_tokens, orig_idx)
+            pred_tokens = data.unsort(pred_tokens, orig_idx)
         return pred_tokens
 
     def save(self, filename, skip_modules=True):

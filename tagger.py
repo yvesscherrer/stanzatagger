@@ -12,13 +12,13 @@ import os
 import time
 import argparse
 import logging
+import random
 import numpy as np
 import torch
 from torch import optim
 
-from data import DataLoader
+from data import DataLoader, unsort
 from trainer import Trainer
-import utils
 from pretrain import Pretrain
 from document import Document
 
@@ -31,6 +31,38 @@ log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
 
 
+def set_random_seed(seed, cuda):
+    """
+    Set a random seed on all of the things which might need it.
+    torch, np, python random, and torch.cuda
+    """
+    if seed is None:
+        seed = random.randint(0, 1000000000)
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if cuda:
+        torch.cuda.manual_seed(seed)
+    return seed
+
+def ensure_dir(d):
+    if not os.path.exists(d):
+        logger.info("Directory {} does not exist; creating...".format(d))
+        os.makedirs(d)
+
+def get_adaptive_eval_interval(cur_dev_size, thres_dev_size, base_interval):
+    """ Adjust the evaluation interval adaptively.
+    If cur_dev_size <= thres_dev_size, return base_interval;
+    else, linearly increase the interval (round to integer times of base interval).
+    """
+    if cur_dev_size <= thres_dev_size:
+        return base_interval
+    else:
+        alpha = round(cur_dev_size / thres_dev_size)
+        return base_interval * alpha
+
+
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str, default='data/pos', help='Root dir for saving models.')
@@ -40,7 +72,6 @@ def parse_args(args=None):
     parser.add_argument('--train_file', type=str, default=None, help='Input file for data loader.')
     parser.add_argument('--eval_file', type=str, default=None, help='Input file for data loader.')
     parser.add_argument('--output_file', type=str, default=None, help='Output CoNLL-U file.')
-    parser.add_argument('--gold_file', type=str, default=None, help='Output CoNLL-U file.')
     parser.add_argument('--mode', default='train', choices=['train', 'predict'])
 
     parser.add_argument('--hidden_dim', type=int, default=200)
@@ -73,7 +104,7 @@ def parse_args(args=None):
     parser.add_argument('--fix_eval_interval', dest='adapt_eval_interval', action='store_false', \
             help="Use fixed evaluation interval for all treebanks, otherwise by default the interval will be increased for larger treebanks.")
     parser.add_argument('--max_steps_before_stop', type=int, default=3000, help='Changes learning method or early terminates after this many steps if the dev scores are not improving')
-    parser.add_argument('--batch_size', type=int, default=5000)
+    parser.add_argument('--batch_size', type=int, default=5000, help='Batch size in tokens. With a negative value, each batch consists of exactly one sentence.')
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Gradient clipping.')
     parser.add_argument('--log_step', type=int, default=20, help='Print log every k steps.')
     parser.add_argument('--save_dir', type=str, default='saved_models/pos', help='Root dir for saving models.')
@@ -93,7 +124,7 @@ def main(args=None):
 
     if args.cpu:
         args.cuda = False
-    utils.set_random_seed(args.seed, args.cuda)
+    set_random_seed(args.seed, args.cuda)
 
     args = vars(args)
     logger.info("Running tagger in {} mode".format(args['mode']))
@@ -127,7 +158,7 @@ def load_pretrain(args):
 
 def train(args):
     model_file = model_file_name(args)
-    utils.ensure_dir(os.path.split(model_file)[0])
+    ensure_dir(os.path.split(model_file)[0])
 
     # load pretrained vectors if needed
     pretrain = load_pretrain(args)
@@ -165,7 +196,7 @@ def train(args):
     format_str = 'Finished step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
 
     if args['adapt_eval_interval']:
-        args['eval_interval'] = utils.get_adaptive_eval_interval(dev_data.num_examples, 2000, args['eval_interval'])
+        args['eval_interval'] = get_adaptive_eval_interval(dev_data.num_examples, 2000, args['eval_interval'])
         logger.info("Evaluating the model every {} steps...".format(args['eval_interval']))
 
     using_amsgrad = False
@@ -192,7 +223,7 @@ def train(args):
                 for dev_batch in dev_data:
                     preds = trainer.predict(dev_batch)
                     dev_preds += preds
-                dev_preds = utils.unsort(dev_preds, dev_data.data_orig_idx)
+                dev_preds = unsort(dev_preds, dev_data.data_orig_idx)
                 dev_data.doc.add_predictions(dev_preds)
                 dev_data.doc.write_to_file(system_pred_file)
                 results = dev_data.doc.evaluate()
@@ -276,7 +307,7 @@ def evaluate(args):
     else:
         # skip eval if dev data does not exist
         preds = []
-    preds = utils.unsort(preds, data.data_orig_idx)
+    preds = unsort(preds, data.data_orig_idx)
 
     # write to file and score
     data.doc.add_predictions(preds)

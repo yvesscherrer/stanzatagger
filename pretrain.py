@@ -45,7 +45,7 @@ class Pretrain:
         if self.filename is not None and os.path.exists(self.filename):
             try:
                 data = torch.load(self.filename, lambda storage, loc: storage)
-                logger.debug("Loaded pretrain from {}".format(self.filename))
+                logger.info("Loaded pretrain from {}".format(self.filename))
                 self._vocab, self._emb = PretrainedWordVocab.load_state_dict(data['vocab']), data['emb']
                 return
             except (KeyboardInterrupt, SystemExit):
