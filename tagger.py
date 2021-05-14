@@ -207,7 +207,7 @@ def train(args):
         epoch += 1
         epoch_start_time = time.time()
         do_break = False
-        for i, batch in enumerate(train_data):
+        for batch in train_data:
             start_time = time.time()
             global_step += 1
             loss = trainer.update(batch, eval=False) # update step
@@ -302,7 +302,7 @@ def evaluate(args):
     if len(data) > 0:
         logger.info("Start evaluation...")
         preds = []
-        for i, batch in enumerate(data):
+        for batch in data:
             preds += trainer.predict(batch)
     else:
         # skip eval if dev data does not exist
