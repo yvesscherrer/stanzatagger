@@ -77,16 +77,18 @@ def get_adaptive_eval_interval(nb_train_batches, nb_dev_batches, min_interval=10
         return opt_interval
 
 def get_adaptive_log_interval(batch_size, min_interval=10, max_interval=1000, gpu=False):
+    available_intervals = [x for x in (10, 20, 50, 100, 200, 500, 1000)
+        if x >= min_interval and x <= max_interval]
     # log 100 times less often if using gpu
     gpu_multiplier = 100 if gpu else 1
     opt_interval = 1000 * gpu_multiplier / max(batch_size, 50)
-    opt_interval = round(opt_interval / 10) * 10
     if opt_interval < min_interval:
         return min_interval
     elif opt_interval > max_interval:
         return max_interval
     else:
-        return opt_interval
+        step_interval = [x for x in available_intervals if x <= opt_interval][-1]
+        return step_interval
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
