@@ -22,6 +22,7 @@ class Document(object):
     
     def _load(self, f):
         sent = Sentence()
+        added = 0
         for line in f:
             if len(line.strip()) == 0:
                 if len(sent) > 0:
@@ -34,15 +35,19 @@ class Document(object):
                 array[-1] = array[-1].strip()
                 sent.add_token(array)
         if len(sent) > 0:
-             self.sentences.append(sent)
+            self.sentences.append(sent)
+            added += 1
+        return added
     
     def load_from_file(self, filename):
-        self._load(open(filename))
-        logger.info("{} sentences loaded from file {}".format(len(self), filename))
+        new_sents = self._load(open(filename))
+        logger.info("{} sentences loaded from file {}".format(new_sents, len(self), filename))
+        logger.info("{} sentences in dataset".format(len(self)))
 
     def load_from_string(self, s):
-        self._load(io.StringIO(s))
-        logger.info("{} sentences loaded".format(len(self)))
+        new_sents = self._load(io.StringIO(s))
+        logger.info("{} sentences loaded from string".format(len(new_sents)))
+        logger.info("{} sentences in dataset".format(len(self)))
     
     def _write(self, f, pred=True, copy_untouched=True):
         for sent in self.sentences:
@@ -167,7 +172,7 @@ class Document(object):
             return max_ratio
         return ratio
 
-    def augment_punct(self, augment_ratio=None):
+    def augment_punct(self, augment_ratio=None, punct_tag='PUNCT'):
 
         """
         Adds extra training data to compensate for some models having all sentences end with PUNCT
@@ -190,8 +195,8 @@ class Document(object):
         if len(self.sentences) == 0:
             return []
         
-        can_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == "PUNCT"
-        should_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == "PUNCT"
+        can_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == punct_tag
+        should_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == punct_tag
 
         if augment_ratio is None:
             augment_ratio = self.get_augment_ratio(should_augment_nopunct, can_augment_nopunct)
