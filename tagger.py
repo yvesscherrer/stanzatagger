@@ -51,17 +51,42 @@ def ensure_dir(d):
         logger.info("Directory {} does not exist; creating...".format(d))
         os.makedirs(d)
 
-def get_adaptive_eval_interval(cur_dev_size, thres_dev_size, base_interval):
-    """ Adjust the evaluation interval adaptively.
-    If cur_dev_size <= thres_dev_size, return base_interval;
-    else, linearly increase the interval (round to integer times of base interval).
-    """
-    if cur_dev_size <= thres_dev_size:
-        return base_interval
-    else:
-        alpha = round(cur_dev_size / thres_dev_size)
-        return base_interval * alpha
+# def get_adaptive_eval_interval(cur_dev_size, thres_dev_size, base_interval):
+#     """ Adjust the evaluation interval adaptively.
+#     If cur_dev_size <= thres_dev_size, return base_interval;
+#     else, linearly increase the interval (round to integer times of base interval).
+#     """
+#     if cur_dev_size <= thres_dev_size:
+#         return base_interval
+#     else:
+#         alpha = round(cur_dev_size / thres_dev_size)
+#         return base_interval * alpha  # nb_dev_sents / 20
 
+def get_adaptive_eval_interval(nb_train_batches, nb_dev_batches, min_interval=100, max_interval=None, multiplier=2):
+    if not max_interval:
+        # evaluate at least once per epoch
+        max_interval = nb_train_batches
+    if max_interval <= min_interval:
+        return min_interval
+    opt_interval = round(multiplier * nb_dev_batches / 100) * 100
+    if opt_interval < min_interval:
+        return min_interval
+    elif opt_interval > max_interval:
+        return max_interval
+    else:
+        return opt_interval
+
+def get_adaptive_log_interval(batch_size, min_interval=10, max_interval=1000, gpu=False):
+    # log 100 times less often if using gpu
+    gpu_multiplier = 100 if gpu else 1
+    opt_interval = 1000 * gpu_multiplier / max(batch_size, 50)
+    opt_interval = round(opt_interval / 10) * 10
+    if opt_interval < min_interval:
+        return min_interval
+    elif opt_interval > max_interval:
+        return max_interval
+    else:
+        return opt_interval
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
@@ -100,13 +125,11 @@ def parse_args(args=None):
     parser.add_argument('--beta2', type=float, default=0.95)
 
     parser.add_argument('--max_steps', type=int, default=50000)
-    parser.add_argument('--eval_interval', type=int, default=100)
-    parser.add_argument('--fix_eval_interval', dest='adapt_eval_interval', action='store_false', \
-            help="Use fixed evaluation interval for all treebanks, otherwise by default the interval will be increased for larger treebanks.")
+    parser.add_argument('--eval_interval', type=int, default=None)
     parser.add_argument('--max_steps_before_stop', type=int, default=3000, help='Changes learning method or early terminates after this many steps if the dev scores are not improving')
     parser.add_argument('--batch_size', type=int, default=5000, help='Batch size in tokens. With a negative value, each batch consists of exactly one sentence.')
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Gradient clipping.')
-    parser.add_argument('--log_step', type=int, default=20, help='Print log every k steps.')
+    parser.add_argument('--log_interval', type=int, default=None, help='Print log every k steps.')
     parser.add_argument('--save_dir', type=str, default='saved_models/pos', help='Root dir for saving models.')
     parser.add_argument('--save_name', type=str, default=None, help="File name to save the model")
 
@@ -184,6 +207,7 @@ def train(args):
         return
 
     logger.info("Training tagger...")
+    logger.info("Device: {}".format("gpu" if args['cuda'] else "cpu"))
     trainer = Trainer(args=args, vocab=vocab, pretrain=pretrain, use_cuda=args['cuda'])
 
     global_step = 0
@@ -195,9 +219,14 @@ def train(args):
     global_start_time = time.time()
     format_str = 'Finished step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
 
-    if args['adapt_eval_interval']:
-        args['eval_interval'] = get_adaptive_eval_interval(dev_data.num_examples, 2000, args['eval_interval'])
-        logger.info("Evaluating the model every {} steps...".format(args['eval_interval']))
+    if not args['eval_interval']:
+        #args['eval_interval'] = get_adaptive_eval_interval(dev_data.num_examples, 2000, args['eval_interval'])
+        args['eval_interval'] = get_adaptive_eval_interval(len(train_data), len(dev_data))
+    logger.info("Evaluating the model every {} steps...".format(args['eval_interval']))
+    
+    if not args['log_interval']:
+        args['log_interval'] = get_adaptive_log_interval(args['batch_size'], max_interval=args['eval_interval'], gpu=args['cuda'])
+    logger.info("Showing log every {} steps".format(args['log_interval']))
 
     using_amsgrad = False
     last_best_step = 0
@@ -212,7 +241,7 @@ def train(args):
             global_step += 1
             loss = trainer.update(batch, eval=False) # update step
             train_loss += loss
-            if global_step % args['log_step'] == 0:
+            if global_step % args['log_interval'] == 0:
                 duration = time.time() - start_time
                 logger.info(format_str.format(global_step, max_steps, loss, duration, current_lr))
 
