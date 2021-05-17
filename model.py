@@ -17,7 +17,7 @@ class Tagger(nn.Module):
 
         self.vocab = vocab
         self.args = args
-        self.use_pretrained = self.args['vector_data'] or self.args['vectors'] or (emb_matrix is not None)
+        self.use_pretrained = emb_matrix is not None
         self.share_hid = share_hid
         self.unsaved_modules = []
 
@@ -41,7 +41,6 @@ class Tagger(nn.Module):
             self.trans_char = nn.Linear(self.args['char_hidden_dim'], self.args['transformed_dim'], bias=False)
             input_size += self.args['transformed_dim']
 
-        ##if self.args['pretrain']:
         if self.use_pretrained:
             # pretrained embeddings, by default this won't be saved into model file
             add_unsaved_module('pretrained_emb', nn.Embedding.from_pretrained(torch.from_numpy(emb_matrix), freeze=True))
@@ -92,7 +91,6 @@ class Tagger(nn.Module):
             word_emb = pack(word_emb)
             inputs += [word_emb]
 
-        ##if self.args['pretrain']:
         if self.use_pretrained:
             pretrained_emb = self.pretrained_emb(pretrained)
             pretrained_emb = self.trans_pretrained(pretrained_emb)
