@@ -63,17 +63,22 @@ def unpack_batch(batch, use_cuda):
 # class Trainer(BaseTrainer):
 class Trainer(object):
     """ A trainer for training models. """
-    def __init__(self, args=None, vocab=None, pretrain=None, model_file=None, use_cuda=False):
-        self.use_cuda = use_cuda
+    def __init__(self, model_file=None, vocab=None, pretrain=None, args=None, use_cuda=False):
         if model_file is not None:
-            # load everything from file
-            self.load(model_file, pretrain)
+            # load trained model from file
+            checkpoint = torch.load(model_file, lambda storage, loc: storage)
+            self.args = checkpoint['config']
+            self.vocab = MultiVocab.load_state_dict(checkpoint['vocab'])
+            self.model = Tagger(self.args, self.vocab, emb_matrix=pretrain.emb if pretrain else None, share_hid=self.args['share_hid'])
+            self.model.load_state_dict(checkpoint['model'], strict=False)
         else:
             # build model from scratch
             self.args = args
             self.vocab = vocab
-            self.model = Tagger(args, vocab, emb_matrix=pretrain.emb if pretrain is not None else None, share_hid=args['share_hid'])
+            self.model = Tagger(args, vocab, emb_matrix=pretrain.emb if pretrain else None, share_hid=args['share_hid'])
+        
         self.parameters = [p for p in self.model.parameters() if p.requires_grad]
+        self.use_cuda = use_cuda
         if self.use_cuda:
             self.model.cuda()
         else:
@@ -133,22 +138,3 @@ class Trainer(object):
             raise
         except Exception as e:
             logger.warning(f"Saving failed... {e} continuing anyway.")
-
-    def load(self, filename, pretrain):
-        """
-        Load a model from file, with preloaded pretrain embeddings. Here we allow the pretrain to be None or a dummy input,
-        and the actual use of pretrain embeddings will depend on the boolean config "pretrain" in the loaded args.
-        """
-        try:
-            checkpoint = torch.load(filename, lambda storage, loc: storage)
-        except BaseException:
-            logger.error("Cannot load model from {}".format(filename))
-            raise
-        self.args = checkpoint['config']
-        self.vocab = MultiVocab.load_state_dict(checkpoint['vocab'])
-        # load model
-        emb_matrix = None
-        if self.args['pretrain'] and pretrain is not None: # we use pretrain only if args['pretrain'] == True and pretrain is not None
-            emb_matrix = pretrain.emb
-        self.model = Tagger(self.args, self.vocab, emb_matrix=emb_matrix, share_hid=self.args['share_hid'])
-        self.model.load_state_dict(checkpoint['model'], strict=False)

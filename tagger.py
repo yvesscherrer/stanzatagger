@@ -161,11 +161,11 @@ def parse_args(args=None):
 
 def main(args=None):
     args = parse_args(args=args)
-
-    if args.cpu:
-        use_cuda = False
-    else:
-        use_cuda = torch.cuda.is_available()
+    ensure_dir(args.model_save)
+    ensure_dir(args.vectors_save)
+    ensure_dir(args.dev_data_out)
+    ensure_dir(args.test_data_out)
+    use_cuda = (not args.cpu) and torch.cuda.is_available()
     set_random_seed(args.seed, use_cuda)
 
     trainer = None
@@ -180,32 +180,23 @@ def main(args=None):
 
 def train(args, use_cuda=False):
     # TODO: load existing model if given
-
-    if args.model_save:
-        ensure_dir(args.model_save)
-    else:
-        logger.warning("Trained model will not be saved.")
     
     # load pretrained vectors if needed
     if args.vector_data:
-        ensure_dir(args.vectors_save)
-        pretrained = Pretrain(args.pretrain_max_vocab)
-        pretrained.load_from_text(args.vector_data)
+        pretrained = Pretrain(from_text=args.vector_data, max_vocab=args.pretrain_max_vocab)
         pretrained.save_to_pt(args.vectors_save)
     else:
         pretrained = None
 
     # load data
     logger.info("Loading training data with batch size {}...".format(args.batch_size))
-    train_doc = Document()
-    train_doc.load_from_file(args.training_data)
+    train_doc = Document(from_file=args.training_data)
     if args.augment_nopunct:
         train_doc.augment_punct(args.augment_nopunct)
     train_data = DataLoader(train_doc, args.batch_size, vars(args), pretrained, evaluation=False)
     vocab = train_data.vocab
     logger.info("Loading development data")
-    dev_doc = Document()
-    dev_doc.load_from_file(args.dev_data)
+    dev_doc = Document(from_file=args.dev_data)
     dev_data = DataLoader(dev_doc, args.batch_size, vars(args), pretrained, vocab=vocab, evaluation=True, sort_during_eval=True)
     ensure_dir(args.dev_data_out)
 
@@ -215,7 +206,7 @@ def train(args, use_cuda=False):
 
     logger.info("Training tagger...")
     logger.info("Device: {}".format("gpu" if use_cuda else "cpu"))
-    trainer = Trainer(args=vars(args), vocab=vocab, pretrain=pretrained, use_cuda=use_cuda)
+    trainer = Trainer(vocab=vocab, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
 
     global_step = 0
     epoch = 0
@@ -315,16 +306,14 @@ def evaluate(args, trainer=None, use_cuda=False):
     # load pretrained vectors and model
     if not trainer:
         # load pretrained vectors
-        pretrained = Pretrain()
-        pretrained.load_from_pt(args.vectors)
+        pretrained = Pretrain(from_pt=args.vectors)
         # load model
         logger.info("Loading model from: {}".format(args.model))
-        trainer = Trainer(pretrain=pretrained, model_file=args.model, use_cuda=use_cuda)
+        trainer = Trainer(model_file=args.model, pretrain=pretrained, use_cuda=use_cuda)
     
     # load data
     logger.info("Loading prediction data with batch size {}...".format(args.batch_size))
-    doc = Document()
-    doc.load_from_file(args.test_data)
+    doc = Document(from_file=args.test_data)
     data = DataLoader(doc, args.batch_size, trainer.args, pretrained, vocab=trainer.vocab, evaluation=True, sort_during_eval=True)
     if len(data) == 0:
         logger.warning("Skip prediction because no data is available.")

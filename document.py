@@ -8,11 +8,15 @@ from evaluator import Evaluator, POS_KEY
 logger = logging.getLogger('stanza')
 
 class Document(object):
-    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}):
+    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, from_file=None, from_string=None):
         self.read_positions = {x: read_positions[x] for x in read_positions if read_positions[x] >= 0}
         self.write_positions = {x: write_positions[x] for x in write_positions if write_positions[x] >= 0}
         self.ignore_comments = ("id" in read_positions and read_positions["id"] == 0)
         self.sentences = []
+        if from_file:
+            self.load_from_file(from_file)
+        if from_string:
+            self.load_from_string(from_string)
     
     def __len__(self):
         return len(self.sentences)

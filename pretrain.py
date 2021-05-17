@@ -24,13 +24,17 @@ class PretrainedWordVocab(BaseVocab):
 class Pretrain:
     """ A loader and saver for pretrained embeddings. """
 
-    def __init__(self, max_vocab=None):
+    def __init__(self, from_text=None, from_pt=None, max_vocab=None):
         if max_vocab:
             self.max_vocab = max_vocab
         else:
             self.max_vocab = sys.maxsize
         self.vocab = None
         self.emb = None
+        if from_text:
+            self.load_from_text(from_text)
+        elif from_pt:
+            self.load_from_pt(from_pt)
     
 
     def load_from_pt(self, filename):
@@ -71,6 +75,7 @@ class Pretrain:
             logger.warning("Cannot load pretrained embeddings, file not found: {}".format(filename))
             return
         
+        logger.info("Loading pretrained vectors from {}".format(filename))
         if filename.endswith(".xz"):
             words, emb, failed = self.read_from_file(filename, open_func=lzma.open)
         elif filename.endswith(".gz"):
