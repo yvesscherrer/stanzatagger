@@ -3,10 +3,10 @@
 """
 Supports for pretrained data.
 """
-import os
+import os, sys
 import re
 
-import lzma
+import lzma, gzip
 import logging
 import numpy as np
 import torch
@@ -20,51 +20,38 @@ class PretrainedWordVocab(BaseVocab):
         self._id2unit = VOCAB_PREFIX + self.data
         self._unit2id = {w:i for i, w in enumerate(self._id2unit)}
 
+
 class Pretrain:
     """ A loader and saver for pretrained embeddings. """
 
-    def __init__(self, filename=None, vec_filename=None, max_vocab=-1, save_to_file=True):
-        self.filename = filename
-        self._vec_filename = vec_filename
-        self._max_vocab = max_vocab
-        self._save_to_file = save_to_file
-
-    @property
-    def vocab(self):
-        if not hasattr(self, '_vocab'):
-            self.load()
-        return self._vocab
-
-    @property
-    def emb(self):
-        if not hasattr(self, '_emb'):
-            self.load()
-        return self._emb
-
-    def load(self):
-        if self.filename is not None and os.path.exists(self.filename):
-            try:
-                data = torch.load(self.filename, lambda storage, loc: storage)
-                logger.info("Loaded pretrain from {}".format(self.filename))
-                self._vocab, self._emb = PretrainedWordVocab.load_state_dict(data['vocab']), data['emb']
-                return
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except BaseException as e:
-                logger.warning("Pretrained file exists but cannot be loaded from {}, due to the following exception:\n\t{}".format(self.filename, e))
-                vocab, emb = self.read_pretrain()
+    def __init__(self, max_vocab=None):
+        if max_vocab:
+            self.max_vocab = max_vocab
         else:
-            vocab, emb = self.read_pretrain()
+            self.max_vocab = sys.maxsize
+        self.vocab = None
+        self.emb = None
+    
 
-        self._vocab = vocab
-        self._emb = emb
+    def load_from_pt(self, filename):
+        if not filename:
+            logger.warning("Cannot load pretrained embeddings, no file name given.")
+            return
+        if not os.path.exists(filename):
+            logger.warning("Cannot load pretrained embeddings, file not found: {}".format(filename))
+            return
+        
+        data = torch.load(filename, lambda storage, loc: storage)
+        logger.info("Loaded pretrained embeddings from {}".format(filename))
+        self.vocab = PretrainedWordVocab.load_state_dict(data['vocab'])
+        self.emb = data['emb']
+    
 
-        if self._save_to_file:
-            # save to file
-            assert self.filename is not None, "Filename must be provided to save pretrained vector to file."
-            self.save(self.filename)
-
-    def save(self, filename):
+    def save_to_pt(self, filename):
+        if not filename:
+            logger.warning("Cannot save pretrained embeddings, no file name given.")
+            return
+        
         # should not infinite loop since the load function sets _vocab and _emb before trying to save
         data = {'vocab': self.vocab.state_dict(), 'emb': self.emb}
         try:
@@ -74,34 +61,35 @@ class Pretrain:
             raise
         except BaseException as e:
             logger.warning("Saving pretrained data failed due to the following exception... continuing anyway.\n\t{}".format(e))
+    
 
-
-    def read_pretrain(self):
-        # load from pretrained filename
-        if self._vec_filename is None:
-            raise Exception("Vector file is not provided.")
-        logger.info("Reading pretrained vectors from {}...".format(self._vec_filename))
-
-        # first try reading as xz file, if failed retry as text file
-        try:
-            words, emb, failed = self.read_from_file(self._vec_filename, open_func=lzma.open)
-        except lzma.LZMAError as err:
-            logger.warning("Cannot decode vector file %s as xz file. Retrying as text file..." % self._vec_filename)
-            words, emb, failed = self.read_from_file(self._vec_filename, open_func=open)
-
+    def load_from_text(self, filename):
+        if not filename:
+            logger.warning("Cannot load pretrained embeddings, no file name given.")
+            return
+        if not os.path.exists(filename):
+            logger.warning("Cannot load pretrained embeddings, file not found: {}".format(filename))
+            return
+        
+        if filename.endswith(".xz"):
+            words, emb, failed = self.read_from_file(filename, open_func=lzma.open)
+        elif filename.endswith(".gz"):
+            words, emb, failed = self.read_from_file(filename, open_func=gzip.open)
+        else:
+            words, emb, failed = self.read_from_file(filename, open_func=open)
+        
         if failed > 0: # recover failure
             emb = emb[:-failed]
         if len(emb) - len(VOCAB_PREFIX) != len(words):
             raise Exception("Loaded number of vectors does not match number of words.")
         
         # Use a fixed vocab size
-        if self._max_vocab > len(VOCAB_PREFIX) and self._max_vocab < len(words):
-            words = words[:self._max_vocab - len(VOCAB_PREFIX)]
-            emb = emb[:self._max_vocab]
-
-        vocab = PretrainedWordVocab(words)
-        
-        return vocab, emb
+        if self.max_vocab > len(VOCAB_PREFIX) and self.max_vocab < len(words):
+            words = words[:self.max_vocab - len(VOCAB_PREFIX)]
+            emb = emb[:self.max_vocab]
+        self.emb = emb
+        self.vocab = PretrainedWordVocab(words)
+    
 
     def read_from_file(self, filename, open_func=open):
         """
@@ -137,12 +125,15 @@ if __name__ == '__main__':
     with open('test.txt', 'w') as fout:
         fout.write('3 2\na 1 1\nb -1 -1\nc 0 0\n')
     # 1st load: save to pt file
-    pretrain = Pretrain('test.pt', 'test.txt')
+    pretrain = Pretrain()
+    pretrain.load_from_text('test.txt')
     print(pretrain.emb)
+    pretrain.save_to_pt('test.pt')
     # verify pt file
     x = torch.load('test.pt')
     print(x)
     # 2nd load: load saved pt file
-    pretrain = Pretrain('test.pt', 'test.txt')
+    pretrain = Pretrain()
+    pretrain.load_from_pt('test.pt')
     print(pretrain.emb)
 
