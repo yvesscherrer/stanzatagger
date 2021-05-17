@@ -79,8 +79,8 @@ def get_adaptive_eval_interval(nb_train_batches, nb_dev_batches, min_interval=10
     else:
         return opt_interval
 
-def get_adaptive_log_interval(batch_size, min_interval=10, max_interval=1000, gpu=False):
-    available_intervals = [x for x in (10, 20, 50, 100, 200, 500, 1000)
+def get_adaptive_log_interval(batch_size, min_interval=10, max_interval=1000, avail_intervals=(10, 20, 50, 100, 200, 500, 1000), gpu=False):
+    available_intervals = [x for x in avail_intervals
         if x >= min_interval and x <= max_interval]
     # log 100 times less often if using gpu
     gpu_multiplier = 100 if gpu else 1
@@ -193,20 +193,25 @@ def train(args, use_cuda=False):
     train_doc = Document(from_file=args.training_data)
     if args.augment_nopunct:
         train_doc.augment_punct(args.augment_nopunct)
-    train_data = DataLoader(train_doc, args.batch_size, vars(args), pretrained, evaluation=False)
-    vocab = train_data.vocab
+    # load existing model if available
+    if args.model:
+        logger.info("Loading model from: {}".format(args.model))
+        trainer = Trainer(model_file=args.model, pretrain=pretrained, use_cuda=use_cuda)
+        train_data = DataLoader(train_doc, args.batch_size, vars(args), pretrained, vocab=trainer.vocab, evaluation=False)
+    else:
+        train_data = DataLoader(train_doc, args.batch_size, vars(args), pretrained, evaluation=False)
+        trainer = Trainer(vocab=train_data.vocab, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
+    
     logger.info("Loading development data")
     dev_doc = Document(from_file=args.dev_data)
-    dev_data = DataLoader(dev_doc, args.batch_size, vars(args), pretrained, vocab=vocab, evaluation=True, sort_during_eval=True)
+    dev_data = DataLoader(dev_doc, args.batch_size, vars(args), pretrained, vocab=trainer.vocab, evaluation=True, sort_during_eval=True)
     ensure_dir(args.dev_data_out)
 
     if len(train_data) == 0:
         logger.warning("Skip training because no training data is available.")
         return None
 
-    logger.info("Training tagger...")
-    logger.info("Device: {}".format("gpu" if use_cuda else "cpu"))
-    trainer = Trainer(vocab=vocab, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
+    logger.info("Start training on device {}".format("gpu" if use_cuda else "cpu"))
 
     global_step = 0
     epoch = 0
