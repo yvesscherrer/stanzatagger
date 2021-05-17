@@ -28,6 +28,7 @@ class Document(object):
                 if len(sent) > 0:
                     self.sentences.append(sent)
                     sent = Sentence()
+                    added += 1
             else:
                 if self.ignore_comments and line.startswith('#'):
                     continue
@@ -41,21 +42,21 @@ class Document(object):
     
     def load_from_file(self, filename):
         new_sents = self._load(open(filename))
-        logger.info("{} sentences loaded from file {}".format(new_sents, len(self), filename))
+        logger.info("{} sentences loaded from file {}".format(new_sents, filename))
         logger.info("{} sentences in dataset".format(len(self)))
 
     def load_from_string(self, s):
         new_sents = self._load(io.StringIO(s))
-        logger.info("{} sentences loaded from string".format(len(new_sents)))
+        logger.info("{} sentences loaded from string".format(new_sents))
         logger.info("{} sentences in dataset".format(len(self)))
     
     def _write(self, f, pred=True, copy_untouched=True):
         for sent in self.sentences:
             for token in sent:
                 if copy_untouched:
-                    array = ["_" for x in range(max(max(self.write_positions.values())+1, len(token.given)))]
+                    array = ["_" for _ in range(max(max(self.write_positions.values())+1, len(token.given)))]
                 else:
-                     array = ["_" for x in range(max(self.write_positions.values())+1)]
+                     array = ["_" for _ in range(max(self.write_positions.values())+1)]
                 for key, pos in self.write_positions.items():
                     if pred and key in token.pred:
                         array[pos] = token.pred[key]
