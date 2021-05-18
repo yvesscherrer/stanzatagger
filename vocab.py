@@ -159,7 +159,7 @@ class CompositeVocab(BaseVocab):
                     if parts[key] not in self._id2unit[key]:
                         self._id2unit[key].append(parts[key])
 
-            # special handle for the case where upos/xpos/ufeats are always empty
+            # special handle for the case where pos/feats are always empty
             if len(self._id2unit) == 0:
                 self._id2unit['_'] = copy(VOCAB_PREFIX) # use an arbitrary key
 
@@ -176,7 +176,7 @@ class CompositeVocab(BaseVocab):
                     if i < len(parts) and p not in self._id2unit[i]:
                         self._id2unit[i].append(p)
 
-            # special handle for the case where upos/xpos/ufeats are always empty
+            # special handle for the case where pos/feats are always empty
             if len(self._id2unit) == 0:
                 self._id2unit[0] = copy(VOCAB_PREFIX) # use an arbitrary key
 

@@ -39,27 +39,6 @@ def unpack_batch(batch, use_cuda):
     return inputs, orig_idx, word_orig_idx, sentlens, wordlens
 
 
-# base class, not sure if this is useful at all
-# class BaseTrainer:
-#     def change_lr(self, new_lr):
-#         for param_group in self.optimizer.param_groups:
-#             param_group['lr'] = new_lr
-
-#     def save(self, filename):
-#         savedict = {
-#                    'model': self.model.state_dict(),
-#                    'optimizer': self.optimizer.state_dict()
-#                    }
-#         torch.save(savedict, filename)
-
-#     def load(self, filename):
-#         savedict = torch.load(filename, lambda storage, loc: storage)
-
-#         self.model.load_state_dict(savedict['model'])
-#         if self.args['mode'] == 'train':
-#             self.optimizer.load_state_dict(savedict['optimizer'])
-
-
 # class Trainer(BaseTrainer):
 class Trainer(object):
     """ A trainer for training models. """
@@ -67,54 +46,57 @@ class Trainer(object):
         if model_file is not None:
             # load trained model from file
             checkpoint = torch.load(model_file, lambda storage, loc: storage)
-            self.args = checkpoint['config']
             self.vocab = MultiVocab.load_state_dict(checkpoint['vocab'])
-            self.model = Tagger(self.args, self.vocab, emb_matrix=pretrain.emb if pretrain else None, share_hid=self.args['share_hid'])
+            self.model = Tagger(checkpoint['config'], self.vocab, emb_matrix=pretrain.emb if pretrain else None)
             self.model.load_state_dict(checkpoint['model'], strict=False)
+            #TODO: load optimizer here
+            #self.optimizer.load_state_dict(checkpoint['optimizer'])
         else:
             # build model from scratch
-            self.args = args
             self.vocab = vocab
-            self.model = Tagger(args, vocab, emb_matrix=pretrain.emb if pretrain else None, share_hid=args['share_hid'])
+            self.model = Tagger(args, vocab, emb_matrix=pretrain.emb if pretrain else None)
         
-        self.parameters = [p for p in self.model.parameters() if p.requires_grad]
+        if args is not None:
+            parameters = [p for p in self.model.parameters() if p.requires_grad]
+            self.optimizer = get_optimizer(args['optim'], parameters, args['lr'], betas=(0.9, args['beta2']), eps=1e-6)
+            self.max_grad_norm = args['max_grad_norm']
+
         self.use_cuda = use_cuda
         if self.use_cuda:
             self.model.cuda()
         else:
             self.model.cpu()
-        self.optimizer = get_optimizer(self.args['optim'], self.parameters, self.args['lr'], betas=(0.9, self.args['beta2']), eps=1e-6)
 
     def update(self, batch, eval=False):
         inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
-        word, word_mask, wordchars, wordchars_mask, upos, ufeats, pretrained = inputs
+        word, word_mask, wordchars, wordchars_mask, pos, feats, pretrained = inputs
 
         if eval:
             self.model.eval()
         else:
             self.model.train()
             self.optimizer.zero_grad()
-        loss, _ = self.model(word, word_mask, wordchars, wordchars_mask, upos, ufeats, pretrained, word_orig_idx, sentlens, wordlens)
+        loss, _ = self.model(word, word_mask, wordchars, wordchars_mask, pos, feats, pretrained, word_orig_idx, sentlens, wordlens)
         loss_val = loss.data.item()
         if eval:
             return loss_val
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args['max_grad_norm'])
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
         self.optimizer.step()
         return loss_val
 
     def predict(self, batch, unsort=True):
         inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
-        word, word_mask, wordchars, wordchars_mask, upos, ufeats, pretrained = inputs
+        word, word_mask, wordchars, wordchars_mask, pos, feats, pretrained = inputs
 
         self.model.eval()
         batch_size = word.size(0)
-        _, preds = self.model(word, word_mask, wordchars, wordchars_mask, upos, ufeats, pretrained, word_orig_idx, sentlens, wordlens)
-        upos_seqs = [self.vocab['upos'].unmap(sent) for sent in preds[0].tolist()]
+        _, preds = self.model(word, word_mask, wordchars, wordchars_mask, pos, feats, pretrained, word_orig_idx, sentlens, wordlens)
+        pos_seqs = [self.vocab['pos'].unmap(sent) for sent in preds[0].tolist()]
         feats_seqs = [self.vocab['feats'].unmap(sent) for sent in preds[1].tolist()]
 
-        pred_tokens = [[[upos_seqs[i][j], feats_seqs[i][j]] for j in range(sentlens[i])] for i in range(batch_size)]
+        pred_tokens = [[[pos_seqs[i][j], feats_seqs[i][j]] for j in range(sentlens[i])] for i in range(batch_size)]
         if unsort:
             pred_tokens = data.unsort(pred_tokens, orig_idx)
         return pred_tokens
@@ -129,7 +111,9 @@ class Trainer(object):
         params = {
                 'model': model_state,
                 'vocab': self.vocab.state_dict(),
-                'config': self.args
+                #TODO: check if it's useful to save the optimizer
+                #'optimizer': self.optimizer.state_dict(),
+                'config': self.model.args
                 }
         try:
             torch.save(params, filename, _use_new_zipfile_serialization=False)

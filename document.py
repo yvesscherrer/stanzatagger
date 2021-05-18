@@ -8,10 +8,11 @@ from evaluator import Evaluator, POS_KEY
 logger = logging.getLogger('stanza')
 
 class Document(object):
-    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, from_file=None, from_string=None):
+    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, from_file=None, from_string=None, copy_untouched=True):
         self.read_positions = {x: read_positions[x] for x in read_positions if read_positions[x] >= 0}
         self.write_positions = {x: write_positions[x] for x in write_positions if write_positions[x] >= 0}
         self.ignore_comments = ("id" in read_positions and read_positions["id"] == 0)
+        self.copy_untouched = copy_untouched
         self.sentences = []
         if from_file:
             self.load_from_file(from_file)
@@ -54,10 +55,10 @@ class Document(object):
         logger.info("{} sentences loaded from string".format(new_sents))
         logger.info("{} sentences in dataset".format(len(self)))
     
-    def _write(self, f, pred=True, copy_untouched=True):
+    def _write(self, f, pred=True):
         for sent in self.sentences:
             for token in sent:
-                if copy_untouched:
+                if self.copy_untouched:
                     array = ["_" for _ in range(max(max(self.write_positions.values())+1, len(token.given)))]
                 else:
                      array = ["_" for _ in range(max(self.write_positions.values())+1)]
@@ -66,7 +67,7 @@ class Document(object):
                         array[pos] = token.pred[key]
                     elif key in self.read_positions:
                         array[pos] = token.given[self.read_positions[key]]
-                if copy_untouched:
+                if self.copy_untouched:
                     for pos in range(len(array)):
                         if pos not in self.write_positions.values():
                             array[pos] = token.given[pos]
@@ -74,12 +75,12 @@ class Document(object):
                 f.write("\t".join(array) + "\n")
             f.write("\n")
     
-    def write_to_file(self, filename, pred=True, copy_untouched=True):
-        self._write(open(filename, 'w'), pred=pred, copy_untouched=copy_untouched)
+    def write_to_file(self, filename, pred=True):
+        self._write(open(filename, 'w'), pred=pred)
     
-    def write_to_string(self, pred=True, copy_untouched=True):
+    def write_to_string(self, pred=True):
         s = io.StringIO()
-        self._write(s, pred=pred, copy_untouched=copy_untouched)
+        self._write(s, pred=pred)
         return s
     
     def provide_data(self):
@@ -110,7 +111,7 @@ class Document(object):
                 ti += 1
             assert(ti == len(sent_array))
     
-    def evaluate(self):
+    def evaluate(self, exclude=[]):
         if "pos" not in self.read_positions and "feats" not in self.read_positions:
             logger.info("Cannot evaluate predictions because gold annotations are not available.")
             return {}
@@ -135,8 +136,8 @@ class Document(object):
 
         results = {}
         results["POS accuracy"] = feats_evaluator.acc(att=POS_KEY)
-        results["FEATS micro-F1"] = feats_evaluator.micro_f1(excl=[POS_KEY])
-        results["POS+FEATS micro-F1"] = feats_evaluator.micro_f1()
+        results["FEATS micro-F1"] = feats_evaluator.micro_f1(excl=[POS_KEY]+exclude)
+        results["POS+FEATS micro-F1"] = feats_evaluator.micro_f1(excl=exclude)
         results["UFEATS exact match"] = exact_evaluator.acc()
         return results
 

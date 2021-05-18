@@ -69,6 +69,8 @@ def get_adaptive_eval_interval(nb_train_batches, nb_dev_batches, min_interval=10
     if not max_interval:
         # evaluate at least once per epoch
         max_interval = nb_train_batches
+    if nb_dev_batches < 1:
+        return max_interval
     if max_interval <= min_interval:
         return min_interval
     opt_interval = round(multiplier * nb_dev_batches / 100) * 100
@@ -95,76 +97,133 @@ def get_adaptive_log_interval(batch_size, min_interval=10, max_interval=1000, av
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--training-data", dest="training_data", type=str, default=None, help="Input training data file")
-    parser.add_argument("--vector-data", dest="vector_data", type=str, default=None, help="File from which to read the pretrained embeddings (supported file types: .txt, .vec, .xz, .gz)")
-    parser.add_argument("--dev-data", dest="dev_data", type=str, default=None, help="Input development/validation data file")
-    parser.add_argument("--dev-data-out", dest="dev_data_out", type=str, default=None, help="Output file for annotated development/validation data")
-    parser.add_argument("--test-data", dest="test_data", type=str, default=None, help="Input test data file")
-    parser.add_argument("--test-data-out", dest="test_data_out", type=str, default=None, help="Output file for annotated test data")
 
-    parser.add_argument("--model", dest="model", default=None, help="Binary file (.pt) containing the parameters of a trained model")
-    parser.add_argument("--model-save", dest="model_save", default=None, help="Binary file (.pt) in which the parameters of a trained model are saved")
-    parser.add_argument("--vectors", dest="vectors", default=None, help="Binary file (.pt) containing the parameters of the pretrained embeddings")
-    parser.add_argument("--vectors-save", dest="vectors_save", default=None, help="Binary file (.pt) in which the parameters of the pretrained embeddings are saved")
+    # data loading and saving
+    parser_paths = parser.add_argument_group('File paths')
+    parser_paths.add_argument("--training-data", type=str, default=None, help="Input training data file")
+    parser_paths.add_argument("--emb-data", type=str, default=None, help="File from which to read the pretrained embeddings (supported file types: .txt, .vec, .xz, .gz)")
+    parser_paths.add_argument('--emb-max-vocab', type=int, default=250000, help="Limit the pretrained embeddings to the first N entries (default: 250000)")
+    parser_paths.add_argument("--dev-data", type=str, default=None, help="Input development/validation data file")
+    parser_paths.add_argument("--dev-data-out", type=str, default=None, help="Output file for annotated development/validation data")
+    parser_paths.add_argument("--test-data", type=str, default=None, help="Input test data file")
+    parser_paths.add_argument("--test-data-out", type=str, default=None, help="Output file for annotated test data")
+    parser_paths.add_argument("--model", default=None, help="Binary file (.pt) containing the parameters of a trained model")
+    parser_paths.add_argument("--model-save", default=None, help="Binary file (.pt) in which the parameters of a trained model are saved")
+    parser_paths.add_argument("--embeddings", default=None, help="Binary file (.pt) containing the parameters of the pretrained embeddings")
+    parser_paths.add_argument("--embeddings-save", default=None, help="Binary file (.pt) in which the parameters of the pretrained embeddings are saved")
 
-    # parser.add_argument('--data_dir', type=str, default='data/pos', help='Root dir for saving models.')
-    # parser.add_argument('--wordvec_dir', type=str, default='extern_data/wordvec', help='Directory of word vectors.')
-    # parser.add_argument('--wordvec_file', type=str, default=None, help='Word vectors filename.')
-    # parser.add_argument('--wordvec_pretrain_file', type=str, default=None, help='Exact name of the pretrain file to read')
-    # parser.add_argument('--train_file', type=str, default=None, help='Input file for data loader.')
-    # parser.add_argument('--eval_file', type=str, default=None, help='Input file for data loader.')
-    # parser.add_argument('--output_file', type=str, default=None, help='Output CoNLL-U file.')
-    # parser.add_argument('--mode', default='train', choices=['train', 'predict'])
+    # data formatting (default options are fine for UD-formatted files)
+    parser_data = parser.add_argument_group('Data formatting and evaluation')
+    parser_data.add_argument("--number-index", type=int, help="Field in which the word numbers are stored (default: 0)", default=0)
+    parser_data.add_argument("--number-index-out", type=int, help="Field in which the word numbers are saved in the output file (default: 0). Use negative value to skip word numbers.", default=0)
+    parser_data.add_argument("--c-token-index", type=int, help="Field in which the tokens used for the character embeddings are stored (default: 1). Use negative value if character embeddings should be disabled.", default=1)
+    parser_data.add_argument("--c-token-index-out", type=int, help="Field in which the character embedding tokens are saved in the output file (default: 1). Use negative value to skip tokens.", default=1)
+    parser_data.add_argument("--w-token-index", type=int, help="Field in which the tokens used for the word embeddings are stored (default: 1). Use negative value if word embeddings should be disabled.", default=1)
+    parser_data.add_argument("--w-token-index-out", type=int, help="Field in which the tokens used for the word embeddings are saved in the output file (default: -1). Use negative value to skip tokens.", default=-1)
+    parser_data.add_argument("--pos-index", type=int, help="Field in which the main POS is stored (default [UPOS tags]: 3)", default=3)
+    parser_data.add_argument("--pos-index-out", type=int, help="Field in which the main POS is saved in the output file (default: 3)", default=3)
+    parser_data.add_argument("--morph-index", type=int, help="Field in which the morphology features are stored (default: 5). Use negative value if morphology features should not be considered", default=5)
+    parser_data.add_argument("--morph-index-out", type=int, help="Field in which the morphology features are saved in the output file (default: 5). Use negative value to skip features.", default=5)
+    parser_data.add_argument("--no-eval-feats", nargs='+', default=[], help="Space-separated list of morphological features that should be ignored during evaluation. Typically used for additional tasks in multitask settings.")
+    parser_data.add_argument("--mask-other-fields", dest="copy_untouched", action="store_false", help="Replaces fields in input that are not used by the tagger (e.g. lemmas, dependencies) with '_' instead of copying them.", default=True)
+    parser_data.add_argument('--augment-nopunct', nargs='?', type=float, const=None, help='Augment the training data by copying some amount of punct-ending sentences as non-punct (default: 0.1, corresponding to 10%).')
+    parser_data.add_argument('--sample-train', type=float, default=1.0, help='Subsample training data (default: 1.0)')
 
-    parser.add_argument('--hidden_dim', type=int, default=200)
-    parser.add_argument('--char_hidden_dim', type=int, default=400)
-    parser.add_argument('--deep_biaff_hidden_dim', type=int, default=400)
-    parser.add_argument('--composite_deep_biaff_hidden_dim', type=int, default=100)
-    parser.add_argument('--word_emb_dim', type=int, default=75)
-    parser.add_argument('--char_emb_dim', type=int, default=100)
-    parser.add_argument('--tag_emb_dim', type=int, default=50)
-    parser.add_argument('--transformed_dim', type=int, default=125)
-    parser.add_argument('--num_layers', type=int, default=2)
-    parser.add_argument('--char_num_layers', type=int, default=1)
-    parser.add_argument('--pretrain_max_vocab', type=int, default=250000)
-    parser.add_argument('--word_dropout', type=float, default=0.33)
-    parser.add_argument('--dropout', type=float, default=0.5)
-    parser.add_argument('--rec_dropout', type=float, default=0, help="Recurrent dropout")
-    parser.add_argument('--char_rec_dropout', type=float, default=0, help="Recurrent dropout")
-    parser.add_argument('--no_char', dest='char', action='store_false', help="Turn off character model.")
-    # parser.add_argument('--no_pretrain', dest='pretrain', action='store_false', help="Turn off pretrained embeddings.")
-    parser.add_argument('--share_hid', action='store_true', help="Share hidden representations for UPOS, XPOS and UFeats.")
-    parser.set_defaults(share_hid=False)
+    parser_net = parser.add_argument_group('Network architecture')
+    parser_net.add_argument('--word-emb-dim', type=int, default=75, help="Size of word embedding layer (default: 75). Use negative value to turn off word embeddings")
+    parser_net.add_argument('--char-emb-dim', type=int, default=100, help="Size of character embedding layer (default: 100). Use negative value to turn off character embeddings")
+    parser_net.add_argument('--transformed-emb-dim', dest="transformed_dim", type=int, default=125, help="Size of transformed output layer of character embeddings and pretrained embeddings (default: 125)")
+    parser_net.add_argument('--pos-emb-dim', type=int, default=50, help="Size of POS embeddings that are fed to predict the morphology features (default: 50). Use negative value to use shared, i.e. non-hierarchical representations for POS and morphology")
+    parser_net.add_argument('--char-hidden-dim', type=int, default=400, help="Size of character LSTM hidden layers (default: 400)")
+    parser_net.add_argument('--char-num-layers', type=int, default=1, help="Number of character LSTM layers (default: 1). Use 0 to disable character LSTM")
+    parser_net.add_argument('--tag-hidden-dim', type=int, default=200, help="Size of tagger LSTM hidden layers (default: 200)")
+    parser_net.add_argument('--tag-num-layers', type=int, default=2, help="Number of tagger LSTM layers (default: 2)")
+    # TODO: merge two lines below, improve help
+    parser_net.add_argument('--deep-biaff-hidden-dim', type=int, default=400, help="Size of biaffine hidden layers (default: 400)")
+    parser_net.add_argument('--composite-deep-biaff-hidden-dim', type=int, default=100, help="Size of composite biaffine hidden layers (default: 100)")
+    parser_net.add_argument('--dropout', type=float, default=0.5, help="Input dropout (default: 0.5)")
+    parser_net.add_argument('--char-rec-dropout', type=float, default=0, help="Recurrent dropout for character LSTM (default: 0). Should only be used with more than one layer")
+    parser_net.add_argument('--tag-rec-dropout', type=float, default=0, help="Recurrent dropout for the tagger LSTM (default: 0). Should only be used with more than one layer")
+    parser_net.add_argument('--word-dropout', type=float, default=0.33, help="Word dropout (default: 0.33)")
 
-    parser.add_argument('--sample_train', type=float, default=1.0, help='Subsample training data.')
-    parser.add_argument('--optim', type=str, default='adam', help='sgd, adagrad, adam or adamax.')
-    parser.add_argument('--lr', type=float, default=3e-3, help='Learning rate')
-    parser.add_argument('--beta2', type=float, default=0.95)
+    parser_train = parser.add_argument_group('Training and optimization')
+    parser_train.add_argument('--batch-size', type=int, default=5000, help='Batch size in tokens (default: 5000). Use negative value to use single sentences')
+    parser_train.add_argument('--max-steps', type=int, default=50000, help="Maximum training steps (default: 50000)")
+    parser_train.add_argument('--max-steps-before-stop', type=int, default=3000, help='Changes learning method or early terminates after N steps if the dev scores are not improving (default: 3000). Use negative value to disable early stopping')
+    parser_train.add_argument('--log-interval', type=int, default=None, help='Print log every N steps. The default value is determined on the basis of batch size and CPU/GPU mode.')
+    parser_train.add_argument('--eval-interval', type=int, default=None, help="Evaluate on dev set every N steps. The default value is determined on the basis of the training and dev data sizes.")
+    parser_train.add_argument('--learning-rate', dest="lr", type=float, default=3e-3, help='Learning rate (default: 3e-3)')
+    parser_train.add_argument('--optimizer', dest="optim", type=str, choices=['sgd', 'adagrad', 'adam', 'adamax'], default='adam', help='Optimization algorithm (default: adam)')
+    parser_train.add_argument('--beta2', type=float, default=0.95, help="Beta2 value required for adam optimizer (default: 0.95)")
+    parser_train.add_argument('--max-grad-norm', type=float, default=1.0, help='Gradient clipping (default: 1.0)')
 
-    parser.add_argument('--max_steps', type=int, default=50000)
-    parser.add_argument('--eval_interval', type=int, default=None)
-    parser.add_argument('--max_steps_before_stop', type=int, default=3000, help='Changes learning method or early terminates after this many steps if the dev scores are not improving')
-    parser.add_argument('--batch_size', type=int, default=5000, help='Batch size in tokens. With a negative value, each batch consists of exactly one sentence.')
-    parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Gradient clipping.')
-    parser.add_argument('--log_interval', type=int, default=None, help='Print log every k steps.')
-    # parser.add_argument('--save_dir', type=str, default='saved_models/pos', help='Root dir for saving models.')
-    # parser.add_argument('--save_name', type=str, default=None, help="File name to save the model")
-
+    # Other arguments
     parser.add_argument('--seed', type=int, default=1234)
     parser.add_argument('--cpu', action='store_true', help='Force CPU even if GPU is available')
 
-    parser.add_argument('--augment_nopunct', nargs='?', type=float, const=None, help='Augment the training data by copying this fraction of punct-ending sentences as non-punct.  Default of None will aim for roughly 10%')
+    # TODO:
+    # parser.add_argument("--add-probs", dest="add_probs", action="store_true", help="Write prediction probabilities to output files")
+    # parser.add_argument("--debug", dest="debug", action="store_true", help="Debug mode")
+    # - default directory + default output names
+    # - word embedding cutoff
+    # - per-attribute evaluation
+    # - OOV-specific evaluation
 
     args = parser.parse_args(args=args)
     return args
 
+def validate_args(args):
+    if args.c_token_index < 0 or args.char_num_layers < 1 or args.char_emb_dim < 1:
+        logger.info("Disable character embeddings")
+        args.c_token_index = -1
+        args.c_token_index_out = -1
+        args.char_num_layers = 0
+        args.char_emb_dim = 0
+    
+    if args.w_token_index < 0:
+        logger.info("Disable word embeddings")
+        args.w_token_index = -1
+        args.w_token_index_out = -1
+        args.word_emb_dim = 0
+        logger.info("Disable pretrained embeddings")
+        args.emb_data = None
+        args.embeddings = None
+        args.emb_save = None
+    elif args.emb_data is None and args.embeddings is None:
+        if args.word_emb_dim < 1:
+            logger.info("Disable word embeddings")
+            args.w_token_index = -1
+            args.w_token_index_out = -1
+        logger.info("Disable pretrained embeddings")
+        args.emb_data = None
+        args.embeddings = None
+        args.emb_save = None
+    
+    if args.model_save and args.emb_data and (args.embeddings_save is None):
+        logger.warning("Pre-trained embeddings must be saved as a .pt file!")
+        args.embeddings_save = args.model_save.replace(".pt", ".emb.pt")
+        logger.warning("Saving them as {}".format(args.embeddings_save))
+    
+    ensure_dir(args.model_save)
+    ensure_dir(args.embeddings_save)
+    ensure_dir(args.dev_data_out)
+    ensure_dir(args.test_data_out)
+    
+
+def get_read_format_args(args):
+    return {"id": args.number_index,
+        "cform": args.c_token_index, "wform": args.w_token_index,
+        "pos": args.pos_index, "feats": args.morph_index}
+
+def get_write_format_args(args):
+    return {"id": args.number_index_out,
+        "cform": args.c_token_index_out, "wform": args.w_token_index_out,
+        "pos": args.pos_index_out, "feats": args.morph_index_out}
+
 
 def main(args=None):
     args = parse_args(args=args)
-    ensure_dir(args.model_save)
-    ensure_dir(args.vectors_save)
-    ensure_dir(args.dev_data_out)
-    ensure_dir(args.test_data_out)
+    validate_args(args)
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     set_random_seed(args.seed, use_cuda)
 
@@ -179,40 +238,36 @@ def main(args=None):
 
 
 def train(args, use_cuda=False):
-    # TODO: load existing model if given
-    
-    # load pretrained vectors if needed
-    if args.vector_data:
-        pretrained = Pretrain(from_text=args.vector_data, max_vocab=args.pretrain_max_vocab)
-        pretrained.save_to_pt(args.vectors_save)
+    # load pretrained embeddings if needed
+    if args.emb_data:
+        pretrained = Pretrain(from_text=args.emb_data, max_vocab=args.emb_max_vocab)
+        pretrained.save_to_pt(args.embeddings_save)
     else:
         pretrained = None
 
     # load data
     logger.info("Loading training data with batch size {}...".format(args.batch_size))
-    train_doc = Document(from_file=args.training_data)
+    train_doc = Document(from_file=args.training_data, read_positions=get_read_format_args(args))
     if args.augment_nopunct:
         train_doc.augment_punct(args.augment_nopunct)
     # load existing model if available
     if args.model:
         logger.info("Loading model from: {}".format(args.model))
-        trainer = Trainer(model_file=args.model, pretrain=pretrained, use_cuda=use_cuda)
-        train_data = DataLoader(train_doc, args.batch_size, vars(args), pretrained, vocab=trainer.vocab, evaluation=False)
+        trainer = Trainer(model_file=args.model, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
+        train_data = DataLoader(train_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, sample_train=args.sample_train, evaluation=False)
     else:
-        train_data = DataLoader(train_doc, args.batch_size, vars(args), pretrained, evaluation=False)
+        train_data = DataLoader(train_doc, args.batch_size, vocab=None, pretrain=pretrained, sample_train=args.sample_train, evaluation=False)
         trainer = Trainer(vocab=train_data.vocab, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
-    
-    logger.info("Loading development data")
-    dev_doc = Document(from_file=args.dev_data)
-    dev_data = DataLoader(dev_doc, args.batch_size, vars(args), pretrained, vocab=trainer.vocab, evaluation=True, sort_during_eval=True)
-    ensure_dir(args.dev_data_out)
 
     if len(train_data) == 0:
         logger.warning("Skip training because no training data is available.")
         return None
+       
+    logger.info("Loading development data")
+    dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched)
+    dev_data = DataLoader(dev_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
 
     logger.info("Start training on device {}".format("gpu" if use_cuda else "cpu"))
-
     global_step = 0
     epoch = 0
     dev_score_history = []
@@ -255,9 +310,9 @@ def train(args, use_cuda=False):
                     preds = trainer.predict(dev_batch)
                     dev_preds += preds
                 dev_preds = unsort(dev_preds, dev_data.data_orig_idx)
-                dev_data.doc.add_predictions(dev_preds)
-                dev_data.doc.write_to_file(args.dev_data_out)
-                results = dev_data.doc.evaluate()
+                dev_doc.add_predictions(dev_preds)
+                dev_doc.write_to_file(args.dev_data_out)
+                results = dev_doc.evaluate(exclude=args.no_eval_feats)
                 #dev_score = results["POS+FEATS micro-F1"]  # more intuitive
                 dev_score = results["UFEATS exact match"]   # for backwards compatibility
                 for k, v in results.items():
@@ -318,8 +373,8 @@ def evaluate(args, trainer=None, use_cuda=False):
     
     # load data
     logger.info("Loading prediction data with batch size {}...".format(args.batch_size))
-    doc = Document(from_file=args.test_data)
-    data = DataLoader(doc, args.batch_size, trainer.args, pretrained, vocab=trainer.vocab, evaluation=True, sort_during_eval=True)
+    doc = Document(from_file=args.test_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched)
+    data = DataLoader(doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
     if len(data) == 0:
         logger.warning("Skip prediction because no data is available.")
         return
@@ -331,9 +386,9 @@ def evaluate(args, trainer=None, use_cuda=False):
     preds = unsort(preds, data.data_orig_idx)
 
     # write to file and score
-    data.doc.add_predictions(preds)
-    data.doc.write_to_file(args.test_data_out)
-    results = data.doc.evaluate()
+    doc.add_predictions(preds)
+    doc.write_to_file(args.test_data_out)
+    results = doc.evaluate(exclude=args.no_eval_feats)
     for k, v in results.items():
         logger.info("{}: {:.2f}%".format(k, 100*v))
     

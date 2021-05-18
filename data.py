@@ -54,15 +54,15 @@ def unsort(sorted_list, oidx):
 
 
 class DataLoader:
-    def __init__(self, doc, batch_size, args, pretrain, vocab=None, evaluation=False, sort_during_eval=False):
+    def __init__(self, doc, batch_size, vocab=None, pretrain=None, word_cutoff=7, sample_train=1.0, evaluation=False):
         self.batch_size = batch_size
-        self.args = args
+        self.word_cutoff = word_cutoff
+        self.sample_train = sample_train
         self.eval = evaluation
-        self.shuffled = not self.eval
-        self.sort_during_eval = sort_during_eval
-        self.doc = doc
 
-        data = self.load_doc(self.doc)
+        # get data from document
+        data = doc.provide_data()
+        data = self.resolve_none(data)
 
         # handle vocab
         if vocab is None:
@@ -74,14 +74,14 @@ class DataLoader:
         self.pretrain_vocab = pretrain.vocab if pretrain else None
 
         # filter and sample data
-        if args.get('sample_train', 1.0) < 1.0 and not self.eval:
-            keep = int(args['sample_train'] * len(data))
+        if self.sample_train < 1.0 and not self.eval:
+            keep = int(self.sample_train * len(data))
             data = random.sample(data, keep)
-            logger.info("Subsample training set with rate {:g}".format(args['sample_train']))
+            logger.info("Subsample training set with rate {:g}".format(self.sample_train))
 
-        data = self.preprocess(data, self.vocab, self.pretrain_vocab, args)
+        data = self.preprocess(data, self.vocab, self.pretrain_vocab)
         # shuffle for training
-        if self.shuffled:
+        if not self.eval:
             random.shuffle(data)
         self.num_examples = len(data)
 
@@ -92,21 +92,21 @@ class DataLoader:
     def init_vocab(self, data):
         assert self.eval == False # for eval vocab must exist
         charvocab = CharVocab(data, idx=0)
-        wordvocab = WordVocab(data, idx=1, cutoff=7, lower=True)
-        uposvocab = WordVocab(data, idx=2)
+        wordvocab = WordVocab(data, idx=1, cutoff=self.word_cutoff, lower=True)
+        posvocab = WordVocab(data, idx=2)
         featsvocab = FeatureVocab(data, idx=3)
         vocab = MultiVocab({'char': charvocab,
                             'word': wordvocab,
-                            'upos': uposvocab,
+                            'pos': posvocab,
                             'feats': featsvocab})
         return vocab
 
-    def preprocess(self, data, vocab, pretrain_vocab, args):
+    def preprocess(self, data, vocab, pretrain_vocab):
         processed = []
         for sent in data:
             processed_sent = [vocab['word'].map([w[1] for w in sent])]
             processed_sent += [[vocab['char'].map([x for x in w[0]]) for w in sent]]
-            processed_sent += [vocab['upos'].map([w[2] for w in sent])]
+            processed_sent += [vocab['pos'].map([w[2] for w in sent])]
             processed_sent += [vocab['feats'].map([w[3] for w in sent])]
             if pretrain_vocab is not None:
                 # always use lowercase lookup in pretrained vocab
@@ -148,20 +148,15 @@ class DataLoader:
         wordchars = get_long_tensor(batch_words, len(word_lens))
         wordchars_mask = torch.eq(wordchars, PAD_ID)
 
-        upos = get_long_tensor(batch[2], batch_size)
-        ufeats = get_long_tensor(batch[3], batch_size)
+        pos = get_long_tensor(batch[2], batch_size)
+        feats = get_long_tensor(batch[3], batch_size)
         pretrained = get_long_tensor(batch[4], batch_size)
         sentlens = [len(x) for x in batch[0]]
-        return words, words_mask, wordchars, wordchars_mask, upos, ufeats, pretrained, orig_idx, word_orig_idx, sentlens, word_lens
+        return words, words_mask, wordchars, wordchars_mask, pos, feats, pretrained, orig_idx, word_orig_idx, sentlens, word_lens
 
     def __iter__(self):
         for i in range(self.__len__()):
             yield self.__getitem__(i)
-
-    def load_doc(self, doc):
-        data = doc.provide_data()
-        data = self.resolve_none(data)
-        return data
 
     def resolve_none(self, data):
         # replace None to '_'
@@ -180,11 +175,11 @@ class DataLoader:
     def chunk_batches(self, data):
         res = []
 
-        if not self.eval:
-            # sort sentences (roughly) by length for better memory utilization
-            data = sorted(data, key = lambda x: len(x[0]), reverse=random.random() > .5)
-        elif self.sort_during_eval:
+        # sort sentences (roughly) by length for better memory utilization
+        if self.eval:
             (data, ), self.data_orig_idx = sort_all([data], [len(x[0]) for x in data])
+        else:
+            data = sorted(data, key = lambda x: len(x[0]), reverse=random.random() > .5)            
 
         if self.batch_size < 0:
             res = [[x] for x in data]
