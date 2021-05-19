@@ -322,8 +322,8 @@ def train(args, use_cuda=False):
                 dev_doc.add_predictions(dev_preds)
                 dev_doc.write_to_file(args.dev_data_out)
                 results = dev_doc.evaluate(exclude=args.no_eval_feats)
-                #dev_score = results["POS+FEATS micro-F1"]  # more intuitive
-                dev_score = results["UFEATS exact match"]   # for backwards compatibility
+                dev_score = results["POS+FEATS micro-F1"]
+                #dev_score = results["UFEATS exact match"]   # for backwards compatibility
                 for k, v in results.items():
                     logger.info("{}: {:.2f}%".format(k, 100*v))
 
@@ -335,7 +335,8 @@ def train(args, use_cuda=False):
                 if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
                     logger.info("New best model found")
                     last_best_step = global_step
-                    trainer.save(args.model_save)
+                    if args.model_save:
+                        trainer.save(args.model_save)
 
                 dev_score_history += [dev_score]
 
@@ -365,7 +366,7 @@ def train(args, use_cuda=False):
     if len(dev_score_history) > 0:
         best_score, best_step = max(dev_score_history), np.argmax(dev_score_history)+1
         logger.info("Best dev score = {:.2f} at step {}".format(best_score*100, best_step * args.eval_interval))
-    else:
+    elif args.model_save:
         logger.info("Dev set never evaluated, saving final model")
         trainer.save(args.model_save)
     return trainer, pretrained
