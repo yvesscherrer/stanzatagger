@@ -62,7 +62,6 @@ class DataLoader:
 
         # get data from document
         data = doc.provide_data()
-        data = self.resolve_none(data)
 
         # handle vocab
         if vocab is None:
@@ -87,7 +86,7 @@ class DataLoader:
 
         # chunk into batches
         self.data = self.chunk_batches(data)
-        logger.info("{} batches created{}.".format(len(self.data), " (one batch per sentence)" if self.batch_size < 0 else ""))
+        logger.info("{} batches created from {} sentences (batch size: {})".format(len(self.data), self.num_examples, self.batch_size))
 
     def init_vocab(self, data):
         assert self.eval == False # for eval vocab must exist
@@ -157,15 +156,6 @@ class DataLoader:
     def __iter__(self):
         for i in range(self.__len__()):
             yield self.__getitem__(i)
-
-    def resolve_none(self, data):
-        # replace None to '_'
-        for sent_idx in range(len(data)):
-            for tok_idx in range(len(data[sent_idx])):
-                for feat_idx in range(len(data[sent_idx][tok_idx])):
-                    if data[sent_idx][tok_idx][feat_idx] is None:
-                        data[sent_idx][tok_idx][feat_idx] = '_'
-        return data
 
     def reshuffle(self):
         data = [y for x in self.data for y in x]

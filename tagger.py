@@ -188,7 +188,7 @@ def validate_args(args):
         logger.info("Disable pretrained embeddings")
         args.emb_data = None
         args.embeddings = None
-        args.emb_save = None
+        args.embeddings_save = None
     elif args.emb_data is None and args.embeddings is None:
         if args.word_emb_dim < 1:
             logger.info("Disable word embeddings")
@@ -197,7 +197,12 @@ def validate_args(args):
         logger.info("Disable pretrained embeddings")
         args.emb_data = None
         args.embeddings = None
-        args.emb_save = None
+        args.embeddings_save = None
+    
+    if args.c_token_index < 0 and args.w_token_index < 0:
+        raise RuntimeError("Cannot use tagger without any token information.")
+    if args.pos_index < 0:
+        raise RuntimeError("POS tag field is required for using the tagger.")
     
     if args.model_save and args.emb_data and (args.embeddings_save is None):
         logger.warning("Pre-trained embeddings must be saved as a .pt file!")
@@ -225,15 +230,17 @@ def main(args=None):
     args = parse_args(args=args)
     validate_args(args)
     use_cuda = (not args.cpu) and torch.cuda.is_available()
-    set_random_seed(args.seed, use_cuda)
+    logger.info("Selected device: {}".format("gpu" if use_cuda else "cpu"))
+    seed = set_random_seed(args.seed, use_cuda)
+    logger.info("Random seed: {}".format(seed))
 
     trainer, pretrained = None, None
     if args.training_data:
-        logger.info("Running tagger in training mode")
+        logger.info("Running tagger in training mode...")
         trainer, pretrained = train(args, use_cuda)
     
     if args.test_data:
-        logger.info("Running tagger in prediction mode")
+        logger.info("Running tagger in prediction mode...")
         evaluate(args, trainer, pretrained, use_cuda)
 
 
@@ -246,13 +253,13 @@ def train(args, use_cuda=False):
         pretrained = None
 
     # load data
-    logger.info("Loading training data with batch size {}...".format(args.batch_size))
+    logger.info("Loading training data...")
     train_doc = Document(from_file=args.training_data, read_positions=get_read_format_args(args))
     if args.augment_nopunct:
         train_doc.augment_punct(args.augment_nopunct)
     # load existing model if available
     if args.model:
-        logger.info("Loading model from: {}".format(args.model))
+        logger.info("Loading model from {}".format(args.model))
         trainer = Trainer(model_file=args.model, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
         train_data = DataLoader(train_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, sample_train=args.sample_train, evaluation=False)
     else:
@@ -260,14 +267,24 @@ def train(args, use_cuda=False):
         trainer = Trainer(vocab=train_data.vocab, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
 
     if len(train_data) == 0:
-        logger.warning("Skip training because no training data is available.")
-        return None
+        raise RuntimeError("Cannot start training because no training data is available")
        
-    logger.info("Loading development data")
+    logger.info("Loading development data...")
     dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched)
     dev_data = DataLoader(dev_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
 
-    logger.info("Start training on device {}".format("gpu" if use_cuda else "cpu"))
+    if len(dev_data) > 0:
+        if not args.eval_interval:
+            #args.eval_interval = get_adaptive_eval_interval(dev_data.num_examples, 2000, 100)
+            args.eval_interval = get_adaptive_eval_interval(len(train_data), len(dev_data))
+        logger.info("Evaluating the model every {} steps".format(args.eval_interval))
+    else:
+        logger.info("No dev data given, not evaluating the model")
+    
+    if not args.log_interval:
+        args.log_interval = get_adaptive_log_interval(args.batch_size, max_interval=args.eval_interval, gpu=use_cuda)
+    logger.info("Showing log every {} steps".format(args.log_interval))
+
     global_step = 0
     epoch = 0
     dev_score_history = []
@@ -275,18 +292,10 @@ def train(args, use_cuda=False):
     max_steps = args.max_steps
     current_lr = args.lr
     global_start_time = time.time()
-    format_str = 'Finished step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
-
-    if not args.eval_interval:
-        #args.eval_interval = get_adaptive_eval_interval(dev_data.num_examples, 2000, 100)
-        args.eval_interval = get_adaptive_eval_interval(len(train_data), len(dev_data))
-    logger.info("Evaluating the model every {} steps...".format(args.eval_interval))
-    
-    if not args.log_interval:
-        args.log_interval = get_adaptive_log_interval(args.batch_size, max_interval=args.eval_interval, gpu=use_cuda)
-    logger.info("Showing log every {} steps".format(args.log_interval))
+    format_str = 'Finished step {}/{}, loss = {:.6f}, {:.3f} sec/batch, lr: {:.6f}'
 
     # start training
+    logger.info("Start training...")
     using_amsgrad = False
     train_loss = 0
     while True:
@@ -319,14 +328,14 @@ def train(args, use_cuda=False):
                     logger.info("{}: {:.2f}%".format(k, 100*v))
 
                 train_loss = train_loss / args.eval_interval # avg loss per batch
-                logger.info("step {}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, train_loss, dev_score))
+                logger.info("Step {}/{}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, max_steps, train_loss, dev_score))
                 train_loss = 0
 
                 # save best model
                 if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
+                    logger.info("New best model found")
                     last_best_step = global_step
                     trainer.save(args.model_save)
-                    logger.info("new best model saved.")
 
                 dev_score_history += [dev_score]
 
@@ -337,7 +346,7 @@ def train(args, use_cuda=False):
                     using_amsgrad = True
                     trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args.lr, betas=(.9, args.beta2), eps=1e-6)
                 else:
-                    logger.info("Early termination: have not improved in {} steps".format(args.max_steps_before_stop))
+                    logger.info("Early stopping: dev_score has not improved in {} steps".format(args.max_steps_before_stop))
                     do_break = True
                     break
 
@@ -348,16 +357,16 @@ def train(args, use_cuda=False):
         if do_break: break
 
         epoch_duration = time.time() - epoch_start_time
-        logger.info("Finished epoch {} after step {} ({:.3f} sec/epoch)".format(epoch, global_step, epoch_duration))
+        logger.info("Finished epoch {} after step {}, {:.3f} sec/epoch".format(epoch, global_step, epoch_duration))
         train_data.reshuffle()
 
-    logger.info("Training ended with {} steps in epoch {}.".format(global_step, epoch))
+    logger.info("Training ended with {} steps in epoch {}".format(global_step, epoch))
 
     if len(dev_score_history) > 0:
         best_score, best_step = max(dev_score_history), np.argmax(dev_score_history)+1
         logger.info("Best dev score = {:.2f} at step {}".format(best_score*100, best_step * args.eval_interval))
     else:
-        logger.info("Dev set never evaluated. Saving final model.")
+        logger.info("Dev set never evaluated, saving final model")
         trainer.save(args.model_save)
     return trainer, pretrained
 
@@ -368,16 +377,15 @@ def evaluate(args, trainer=None, pretrained=None, use_cuda=False):
         # load pretrained embeddings
         pretrained = Pretrain(from_pt=args.embeddings)
         # load model
-        logger.info("Loading model from: {}".format(args.model))
+        logger.info("Loading model from {}".format(args.model))
         trainer = Trainer(model_file=args.model, pretrain=pretrained, use_cuda=use_cuda)
     
     # load data
-    logger.info("Loading prediction data with batch size {}...".format(args.batch_size))
+    logger.info("Loading prediction data...")
     doc = Document(from_file=args.test_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched)
     data = DataLoader(doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
     if len(data) == 0:
-        logger.warning("Skip prediction because no data is available.")
-        return
+        raise RuntimeError("Cannot start prediction because no data is available")
 
     logger.info("Start prediction...")
     preds = []

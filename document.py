@@ -48,12 +48,10 @@ class Document(object):
     def load_from_file(self, filename):
         new_sents = self._load(open(filename))
         logger.info("{} sentences loaded from file {}".format(new_sents, filename))
-        logger.info("{} sentences in dataset".format(len(self)))
 
     def load_from_string(self, s):
         new_sents = self._load(io.StringIO(s))
         logger.info("{} sentences loaded from string".format(new_sents))
-        logger.info("{} sentences in dataset".format(len(self)))
     
     def _write(self, f, pred=True):
         for sent in self.sentences:
@@ -95,7 +93,7 @@ class Document(object):
                     if key in self.read_positions:
                         token_array.append(token.given[self.read_positions[key]])
                     else:
-                        token_array.append("")
+                        token_array.append("_")
                 sent_array.append(token_array)
             doc_array.append(sent_array)
         return doc_array

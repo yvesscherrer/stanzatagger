@@ -86,11 +86,21 @@ class Tagger(nn.Module):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
         
+        def get_batch_sizes(sentlens):
+            b = []
+            for i in range(max(sentlens)):
+                c = len([x for x in sentlens if x > i])
+                b.append(c)
+            return torch.tensor(b)
+        
         inputs = []
         if self.use_word:
             word_emb = self.word_emb(word)
             word_emb = pack(word_emb)
             inputs += [word_emb]
+            batch_sizes = word_emb.batch_sizes
+        else:
+            batch_sizes = get_batch_sizes(sentlens)
 
         if self.use_pretrained:
             pretrained_emb = self.pretrained_emb(pretrained)
@@ -99,7 +109,7 @@ class Tagger(nn.Module):
             inputs += [pretrained_emb]
 
         def pad(x):
-            return pad_packed_sequence(PackedSequence(x, word_emb.batch_sizes), batch_first=True)[0]
+            return pad_packed_sequence(PackedSequence(x, batch_sizes), batch_first=True)[0]
 
         if self.use_char:
             char_reps = self.charmodel(wordchars, wordchars_mask, word_orig_idx, sentlens, wordlens)
