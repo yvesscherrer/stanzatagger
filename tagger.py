@@ -158,7 +158,7 @@ def parse_args(args=None):
     parser_train.add_argument('--max-grad-norm', type=float, default=1.0, help='Gradient clipping (default: 1.0)')
 
     # Other arguments
-    parser.add_argument('--seed', type=int, default=1234)
+    parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--cpu', action='store_true', help='Force CPU even if GPU is available')
 
     # TODO:
