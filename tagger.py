@@ -227,14 +227,14 @@ def main(args=None):
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     set_random_seed(args.seed, use_cuda)
 
-    trainer = None
+    trainer, pretrained = None, None
     if args.training_data:
         logger.info("Running tagger in training mode")
-        trainer = train(args, use_cuda)
+        trainer, pretrained = train(args, use_cuda)
     
     if args.test_data:
         logger.info("Running tagger in prediction mode")
-        evaluate(args, trainer, use_cuda)
+        evaluate(args, trainer, pretrained, use_cuda)
 
 
 def train(args, use_cuda=False):
@@ -359,14 +359,14 @@ def train(args, use_cuda=False):
     else:
         logger.info("Dev set never evaluated. Saving final model.")
         trainer.save(args.model_save)
-    return trainer
+    return trainer, pretrained
 
 
-def evaluate(args, trainer=None, use_cuda=False):
-    # load pretrained vectors and model
+def evaluate(args, trainer=None, pretrained=None, use_cuda=False):
+    # load pretrained embeddings and model
     if not trainer:
-        # load pretrained vectors
-        pretrained = Pretrain(from_pt=args.vectors)
+        # load pretrained embeddings
+        pretrained = Pretrain(from_pt=args.embeddings)
         # load model
         logger.info("Loading model from: {}".format(args.model))
         trainer = Trainer(model_file=args.model, pretrain=pretrained, use_cuda=use_cuda)
