@@ -8,14 +8,14 @@ from evaluator import Evaluator, POS_KEY
 logger = logging.getLogger('stanza')
 
 class Document(object):
-    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, from_file=None, from_string=None, copy_untouched=True):
+    def __init__(self, read_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, write_positions={"id": 0, "cform": 1, "wform": 1, "pos": 3, "feats": 5}, from_file=None, from_string=None, copy_untouched=True, sample_ratio=1.0, cut_first=-1):
         self.read_positions = {x: read_positions[x] for x in read_positions if read_positions[x] >= 0}
         self.write_positions = {x: write_positions[x] for x in write_positions if write_positions[x] >= 0}
         self.ignore_comments = ("id" in read_positions and read_positions["id"] == 0)
         self.copy_untouched = copy_untouched
         self.sentences = []
         if from_file:
-            self.load_from_file(from_file)
+            self.load_from_file(from_file, sample_ratio, cut_first)
         if from_string:
             self.load_from_string(from_string)
     
@@ -25,15 +25,14 @@ class Document(object):
     def __iter__(self):
         return iter(self.sentences)
     
-    def _load(self, f):
+    def _load(self, f, sample_ratio, cut_first):
+        new_sentences = []
         sent = Sentence()
-        added = 0
         for line in f:
             if len(line.strip()) == 0:
                 if len(sent) > 0:
-                    self.sentences.append(sent)
+                    new_sentences.append(sent)
                     sent = Sentence()
-                    added += 1
             else:
                 if self.ignore_comments and line.startswith('#'):
                     continue
@@ -41,16 +40,25 @@ class Document(object):
                 array[-1] = array[-1].strip()
                 sent.add_token(array)
         if len(sent) > 0:
-            self.sentences.append(sent)
-            added += 1
-        return added
+            new_sentences.append(sent)
+        
+        if cut_first > 0 and len(new_sentences) > cut_first:
+            new_sentences = new_sentences[:cut_first]
+            logger.info("Reduce dataset to first {} instances".format(cut_first))
+        if sample_ratio < 1.0:
+            keep = int(sample_ratio * len(new_sentences))
+            new_sentences = random.sample(new_sentences, keep)
+            logger.info("Subsample dataset with rate {:g}".format(sample_ratio))
+        
+        self.sentences.extend(new_sentences)
+        return len(new_sentences)
     
-    def load_from_file(self, filename):
-        new_sents = self._load(open(filename))
+    def load_from_file(self, filename, sample_ratio=1.0, cut_first=-1):
+        new_sents = self._load(open(filename), sample_ratio, cut_first)
         logger.info("{} sentences loaded from file {}".format(new_sents, filename))
 
-    def load_from_string(self, s):
-        new_sents = self._load(io.StringIO(s))
+    def load_from_string(self, s, sample_ratio=1.0, cut_first=-1):
+        new_sents = self._load(io.StringIO(s), sample_ratio, cut_first)
         logger.info("{} sentences loaded from string".format(new_sents))
     
     def _write(self, f, pred=True):
@@ -62,7 +70,11 @@ class Document(object):
                      array = ["_" for _ in range(max(self.write_positions.values())+1)]
                 for key, pos in self.write_positions.items():
                     if pred and key in token.pred:
-                        array[pos] = token.pred[key]
+                        if key == 'unk':
+                            if token.pred[key]:
+                                array[pos] = "OOV"
+                        else:
+                            array[pos] = token.pred[key]
                     elif key in self.read_positions:
                         array[pos] = token.given[self.read_positions[key]]
                 if self.copy_untouched:
@@ -105,7 +117,7 @@ class Document(object):
             for token in sent:
                 if "id" in self.read_positions and ("." in token.given[self.read_positions["id"]] or "-" in token.given[self.read_positions["id"]]):
                     continue
-                token.pred = {"pos": sent_array[ti][0], "feats": sent_array[ti][1]}
+                token.pred = {"pos": sent_array[ti][0], "feats": sent_array[ti][1], "unk": sent_array[ti][2]}
                 ti += 1
             assert(ti == len(sent_array))
     

@@ -54,10 +54,9 @@ def unsort(sorted_list, oidx):
 
 
 class DataLoader:
-    def __init__(self, doc, batch_size, vocab=None, pretrain=None, word_cutoff=7, sample_train=1.0, evaluation=False):
+    def __init__(self, doc, batch_size, vocab=None, pretrain=None, word_cutoff=7, evaluation=False):
         self.batch_size = batch_size
         self.word_cutoff = word_cutoff
-        self.sample_train = sample_train
         self.eval = evaluation
 
         # get data from document
@@ -71,12 +70,6 @@ class DataLoader:
         
         # handle pretrain
         self.pretrain_vocab = pretrain.vocab if pretrain else None
-
-        # filter and sample data
-        if self.sample_train < 1.0 and not self.eval:
-            keep = int(self.sample_train * len(data))
-            data = random.sample(data, keep)
-            logger.info("Subsample training set with rate {:g}".format(self.sample_train))
 
         data = self.preprocess(data, self.vocab, self.pretrain_vocab)
         # shuffle for training

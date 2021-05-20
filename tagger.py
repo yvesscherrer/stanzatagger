@@ -120,14 +120,18 @@ def parse_args(args=None):
     parser_data.add_argument("--c-token-index-out", type=int, help="Field in which the character embedding tokens are saved in the output file (default: 1). Use negative value to skip tokens.", default=1)
     parser_data.add_argument("--w-token-index", type=int, help="Field in which the tokens used for the word embeddings are stored (default: 1). Use negative value if word embeddings should be disabled.", default=1)
     parser_data.add_argument("--w-token-index-out", type=int, help="Field in which the tokens used for the word embeddings are saved in the output file (default: -1). Use negative value to skip tokens.", default=-1)
+    parser_data.add_argument("--w-token-min-freq", type=int, help="Minimum frequency starting from which word embeddings will be considered (default: 7)", default=7)
     parser_data.add_argument("--pos-index", type=int, help="Field in which the main POS is stored (default [UPOS tags]: 3)", default=3)
     parser_data.add_argument("--pos-index-out", type=int, help="Field in which the main POS is saved in the output file (default: 3)", default=3)
     parser_data.add_argument("--morph-index", type=int, help="Field in which the morphology features are stored (default: 5). Use negative value if morphology features should not be considered", default=5)
     parser_data.add_argument("--morph-index-out", type=int, help="Field in which the morphology features are saved in the output file (default: 5). Use negative value to skip features.", default=5)
+    parser_data.add_argument("--oov-index-out", type=int, default=-1, help="Field in which OOV information is saved in the output file (default: not written)")
     parser_data.add_argument("--no-eval-feats", nargs='+', default=[], help="Space-separated list of morphological features that should be ignored during evaluation. Typically used for additional tasks in multitask settings.")
     parser_data.add_argument("--mask-other-fields", dest="copy_untouched", action="store_false", help="Replaces fields in input that are not used by the tagger (e.g. lemmas, dependencies) with '_' instead of copying them.", default=True)
     parser_data.add_argument('--augment-nopunct', nargs='?', type=float, const=None, help='Augment the training data by copying some amount of punct-ending sentences as non-punct (default: 0.1, corresponding to 10%).')
-    parser_data.add_argument('--sample-train', type=float, default=1.0, help='Subsample training data (default: 1.0)')
+    parser_data.add_argument('--sample-train', type=float, default=1.0, help='Subsample training data to proportion of N (default: 1.0)')
+    parser_data.add_argument('--cut-dev', type=int, default=-1, help='Cut dev data to first N sentences')
+    parser.add_argument("--debug", action="store_true", help="Debug mode - shortcut for `--sample-train 0.05 --cut-dev 100 --batch-size -1`")
 
     parser_net = parser.add_argument_group('Network architecture')
     parser_net.add_argument('--word-emb-dim', type=int, default=75, help="Size of word embedding layer (default: 75). Use negative value to turn off word embeddings")
@@ -136,6 +140,7 @@ def parse_args(args=None):
     parser_net.add_argument('--pos-emb-dim', type=int, default=50, help="Size of POS embeddings that are fed to predict the morphology features (default: 50). Use negative value to use shared, i.e. non-hierarchical representations for POS and morphology")
     parser_net.add_argument('--char-hidden-dim', type=int, default=400, help="Size of character LSTM hidden layers (default: 400)")
     parser_net.add_argument('--char-num-layers', type=int, default=1, help="Number of character LSTM layers (default: 1). Use 0 to disable character LSTM")
+    parser_net.add_argument('--char-bidir', action='store_true', help="Uses a bidirectional LSTM for the character embeddings (default: false)")
     parser_net.add_argument('--tag-hidden-dim', type=int, default=200, help="Size of tagger LSTM hidden layers (default: 200)")
     parser_net.add_argument('--tag-num-layers', type=int, default=2, help="Number of tagger LSTM layers (default: 2)")
     # TODO: merge two lines below, improve help
@@ -163,9 +168,7 @@ def parse_args(args=None):
 
     # TODO:
     # parser.add_argument("--add-probs", dest="add_probs", action="store_true", help="Write prediction probabilities to output files")
-    # parser.add_argument("--debug", dest="debug", action="store_true", help="Debug mode")
     # - default directory + default output names
-    # - word embedding cutoff
     # - per-attribute evaluation
     # - OOV-specific evaluation
 
@@ -204,6 +207,12 @@ def validate_args(args):
     if args.pos_index < 0:
         raise RuntimeError("POS tag field is required for using the tagger.")
     
+    if args.debug:
+        logger.info("Debug mode: reduce train and dev set")
+        args.sample_train = 0.05
+        args.cut_dev = 100
+        args.batch_size = -1
+    
     if args.model_save and args.emb_data and (args.embeddings_save is None):
         logger.warning("Pre-trained embeddings must be saved as a .pt file!")
         args.embeddings_save = args.model_save.replace(".pt", ".emb.pt")
@@ -221,7 +230,7 @@ def get_read_format_args(args):
         "pos": args.pos_index, "feats": args.morph_index}
 
 def get_write_format_args(args):
-    return {"id": args.number_index_out,
+    return {"id": args.number_index_out, "unk": args.oov_index_out,
         "cform": args.c_token_index_out, "wform": args.w_token_index_out,
         "pos": args.pos_index_out, "feats": args.morph_index_out}
 
@@ -254,23 +263,23 @@ def train(args, use_cuda=False):
 
     # load data
     logger.info("Loading training data...")
-    train_doc = Document(from_file=args.training_data, read_positions=get_read_format_args(args))
+    train_doc = Document(from_file=args.training_data, read_positions=get_read_format_args(args), sample_ratio=args.sample_train)
     if args.augment_nopunct:
         train_doc.augment_punct(args.augment_nopunct)
     # load existing model if available
     if args.model:
         logger.info("Loading model from {}".format(args.model))
         trainer = Trainer(model_file=args.model, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
-        train_data = DataLoader(train_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, sample_train=args.sample_train, evaluation=False)
+        train_data = DataLoader(train_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=False)
     else:
-        train_data = DataLoader(train_doc, args.batch_size, vocab=None, pretrain=pretrained, sample_train=args.sample_train, evaluation=False)
+        train_data = DataLoader(train_doc, args.batch_size, vocab=None, pretrain=pretrained, evaluation=False, word_cutoff=args.w_token_min_freq)
         trainer = Trainer(vocab=train_data.vocab, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
 
     if len(train_data) == 0:
         raise RuntimeError("Cannot start training because no training data is available")
        
     logger.info("Loading development data...")
-    dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched)
+    dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched, cut_first=args.cut_dev)
     dev_data = DataLoader(dev_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
 
     if len(dev_data) > 0:
