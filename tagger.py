@@ -117,7 +117,7 @@ def parse_args(args=None):
     parser_data.add_argument("--oov-index-out", type=int, default=-1, help="Field in which OOV information is saved in the output file (default: not written)")
     parser_data.add_argument("--no-eval-feats", nargs='+', default=[], help="Space-separated list of morphological features that should be ignored during evaluation. Typically used for additional tasks in multitask settings.")
     parser_data.add_argument("--mask-other-fields", dest="copy_untouched", action="store_false", help="Replaces fields in input that are not used by the tagger (e.g. lemmas, dependencies) with '_' instead of copying them.", default=True)
-    parser_data.add_argument('--augment-nopunct', nargs='?', type=float, const=None, help='Augment the training data by copying some amount of punct-ending sentences as non-punct (default: 0.1, corresponding to 10%%)')
+    parser_data.add_argument('--augment-nopunct', nargs='?', type=float, const=0.1, default=None, help='Augment the training data by copying some amount of punct-ending sentences as non-punct (default: 0.1, corresponding to 10%%)')
     parser_data.add_argument('--sample-train', type=float, default=1.0, help='Subsample training data to proportion of N (default: 1.0)')
     parser_data.add_argument('--cut-dev', type=int, default=-1, help='Cut dev data to first N sentences (default: keep all)')
     parser_data.add_argument("--debug", action="store_true", help="Debug mode. This is a shortcut for '--sample-train 0.05 --cut-dev 100 --batch-size -1'")
