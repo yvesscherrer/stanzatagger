@@ -87,6 +87,7 @@ class Document(object):
     
     def write_to_file(self, filename, pred=True):
         self._write(open(filename, 'w'), pred=pred)
+        logger.info("Predictions written to file {}".format(filename))
     
     def write_to_string(self, pred=True):
         s = io.StringIO()
@@ -121,17 +122,19 @@ class Document(object):
                 ti += 1
             assert(ti == len(sent_array))
     
-    def evaluate(self, exclude=[]):
-        if "pos" not in self.read_positions and "feats" not in self.read_positions:
-            logger.info("Cannot evaluate predictions because gold annotations are not available.")
-            return {}
-
+    def evaluate(self):
         feats_evaluator = Evaluator(mode="by_feats")
+        feats_oov_evaluator = Evaluator(mode="by_feats")
         exact_evaluator = Evaluator(mode="exact", only_univ=True)
+
+        if "pos" not in self.read_positions and "feats" not in self.read_positions:
+            logger.info("Cannot evaluate predictions because gold annotations are not available")
+            return feats_evaluator, feats_oov_evaluator, exact_evaluator
+
         for sent in self.sentences:
             for token in sent:
                 pred_feats = {}
-                gold_feats = {}                
+                gold_feats = {}
                 if "feats" in token.pred and "feats" in self.read_positions:
                     if token.pred["feats"] not in ("_", ""):
                         pred_feats = dict([x.split("=", 1) for x in token.pred["feats"].split("|")])
@@ -143,13 +146,10 @@ class Document(object):
                     pred_feats.update({POS_KEY: token.pred["pos"]})
                     gold_feats.update({POS_KEY: token.given[self.read_positions["pos"]]})
                     feats_evaluator.add_instance(gold_feats, pred_feats)
-
-        results = {}
-        results["POS accuracy"] = feats_evaluator.acc(att=POS_KEY)
-        results["FEATS micro-F1"] = feats_evaluator.micro_f1(excl=[POS_KEY]+exclude)
-        results["POS+FEATS micro-F1"] = feats_evaluator.micro_f1(excl=exclude)
-        results["UFEATS exact match"] = exact_evaluator.acc()
-        return results
+                    if "unk" in token.pred and token.pred["unk"]:
+                        feats_oov_evaluator.add_instance(gold_feats, pred_feats)
+        
+        return feats_evaluator, feats_oov_evaluator, exact_evaluator
 
 
     def get_augment_ratio(self, should_augment_predicate, can_augment_predicate, desired_ratio=0.1, max_ratio=0.5):

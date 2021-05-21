@@ -40,8 +40,7 @@ class Tagger(nn.Module):
 
         if self.use_char:
             self.charmodel = CharacterModel(args, vocab, bidirectional=args['char_bidir'])
-            ndir = 2 if args['char_bidir'] else 1
-            self.trans_char = nn.Linear(ndir * self.args['char_hidden_dim'], self.args['transformed_dim'], bias=False)
+            self.trans_char = nn.Linear(self.charmodel.num_dir * self.args['char_hidden_dim'], self.args['transformed_dim'], bias=False)
             input_size += self.args['transformed_dim']
 
         if self.use_pretrained:

@@ -1,9 +1,10 @@
 """
 Entry point for training and evaluating a POS/morphological features tagger.
 
-This tagger uses highway BiLSTM layers with character and word-level representations, and biaffine classifiers
-to produce consistent POS and UFeats predictions.
-For details please refer to paper: https://nlp.stanford.edu/pubs/qi2018universal.pdf.
+This tagger uses highway BiLSTM layers with character and word-level representations,
+and biaffine classifiers to produce consistent POS and Feats predictions.
+For details please refer to paper:
+https://nlp.stanford.edu/pubs/qi2018universal.pdf.
 """
 
 # was stanza.models.tagger
@@ -15,12 +16,12 @@ import logging
 import random
 import numpy as np
 import torch
-from torch import optim
 
 from data import DataLoader, unsort
 from trainer import Trainer
 from pretrain import Pretrain
 from document import Document
+from evaluator import POS_KEY
 
 logger = logging.getLogger('stanza')
 logger.setLevel(logging.DEBUG)
@@ -38,7 +39,6 @@ def set_random_seed(seed, cuda):
     """
     if seed is None:
         seed = random.randint(0, 1000000000)
-
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -53,17 +53,6 @@ def ensure_dir(path):
     if not os.path.exists(d):
         logger.info("Directory {} does not exist, creating it...".format(d))
         os.makedirs(d)
-
-# def get_adaptive_eval_interval(cur_dev_size, thres_dev_size, base_interval):
-#     """ Adjust the evaluation interval adaptively.
-#     If cur_dev_size <= thres_dev_size, return base_interval;
-#     else, linearly increase the interval (round to integer times of base interval).
-#     """
-#     if cur_dev_size <= thres_dev_size:
-#         return base_interval
-#     else:
-#         alpha = round(cur_dev_size / thres_dev_size)
-#         return base_interval * alpha  # nb_dev_sents / 20
 
 def get_adaptive_eval_interval(nb_train_batches, nb_dev_batches, min_interval=100, max_interval=None, multiplier=2):
     if not max_interval:
@@ -128,10 +117,10 @@ def parse_args(args=None):
     parser_data.add_argument("--oov-index-out", type=int, default=-1, help="Field in which OOV information is saved in the output file (default: not written)")
     parser_data.add_argument("--no-eval-feats", nargs='+', default=[], help="Space-separated list of morphological features that should be ignored during evaluation. Typically used for additional tasks in multitask settings.")
     parser_data.add_argument("--mask-other-fields", dest="copy_untouched", action="store_false", help="Replaces fields in input that are not used by the tagger (e.g. lemmas, dependencies) with '_' instead of copying them.", default=True)
-    parser_data.add_argument('--augment-nopunct', nargs='?', type=float, const=None, help='Augment the training data by copying some amount of punct-ending sentences as non-punct (default: 0.1, corresponding to 10%).')
+    parser_data.add_argument('--augment-nopunct', nargs='?', type=float, const=None, help='Augment the training data by copying some amount of punct-ending sentences as non-punct (default: 0.1, corresponding to 10%%)')
     parser_data.add_argument('--sample-train', type=float, default=1.0, help='Subsample training data to proportion of N (default: 1.0)')
-    parser_data.add_argument('--cut-dev', type=int, default=-1, help='Cut dev data to first N sentences')
-    parser.add_argument("--debug", action="store_true", help="Debug mode - shortcut for `--sample-train 0.05 --cut-dev 100 --batch-size -1`")
+    parser_data.add_argument('--cut-dev', type=int, default=-1, help='Cut dev data to first N sentences (default: keep all)')
+    parser_data.add_argument("--debug", action="store_true", help="Debug mode. This is a shortcut for '--sample-train 0.05 --cut-dev 100 --batch-size -1'")
 
     parser_net = parser.add_argument_group('Network architecture')
     parser_net.add_argument('--word-emb-dim', type=int, default=75, help="Size of word embedding layer (default: 75). Use negative value to turn off word embeddings")
@@ -163,14 +152,12 @@ def parse_args(args=None):
     parser_train.add_argument('--max-grad-norm', type=float, default=1.0, help='Gradient clipping (default: 1.0)')
 
     # Other arguments
-    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--seed', type=int, default=None, help="Set the random seed")
     parser.add_argument('--cpu', action='store_true', help='Force CPU even if GPU is available')
 
     # TODO:
-    # parser.add_argument("--add-probs", dest="add_probs", action="store_true", help="Write prediction probabilities to output files")
+    # parser.add_argument("--add-probs", action="store_true", help="Write prediction probabilities to output files")
     # - default directory + default output names
-    # - per-attribute evaluation
-    # - OOV-specific evaluation
 
     args = parser.parse_args(args=args)
     return args
@@ -204,8 +191,8 @@ def validate_args(args):
     
     if args.c_token_index < 0 and args.w_token_index < 0:
         raise RuntimeError("Cannot use tagger without any token information.")
-    if args.pos_index < 0:
-        raise RuntimeError("POS tag field is required for using the tagger.")
+    if args.training_data and args.pos_index < 0:
+        raise RuntimeError("POS tag field is required for training the tagger.")
     
     if args.debug:
         logger.info("Debug mode: reduce train and dev set")
@@ -250,7 +237,44 @@ def main(args=None):
     
     if args.test_data:
         logger.info("Running tagger in prediction mode...")
-        evaluate(args, trainer, pretrained, use_cuda)
+        predict(args, trainer, pretrained, use_cuda)
+
+
+def display_results(doc, no_eval_feats, per_feature=False):
+    feats_eval, oov_eval, exact_eval = doc.evaluate()
+    if feats_eval.instance_count == 0:
+        return 0.0
+    s = "Evaluation:"
+    s += "\nOOV rate:  {:.2f}%".format(100*oov_eval.instance_count / feats_eval.instance_count)
+    s += "\n           All MicroF1  OOV MicroF1"
+    s += "\nPOS+FEATS  {:.2f}%       {:.2f}%".format(
+        100*feats_eval.micro_f1(excl=no_eval_feats),
+        100*oov_eval.micro_f1(excl=no_eval_feats)
+    )
+    s += "\nPOS        {:.2f}%       {:.2f}%".format(
+        100*feats_eval.acc(att=POS_KEY),
+        100*oov_eval.acc(att=POS_KEY)
+    )
+    s += "\nFEATS      {:.2f}%       {:.2f}%".format(
+        100*feats_eval.micro_f1(excl=[POS_KEY]+no_eval_feats),
+        100*oov_eval.micro_f1(excl=[POS_KEY]+no_eval_feats)
+    )
+    s += "\nUFEATS     {:.2f}% (exact match)".format(100*exact_eval.acc())
+    
+    if per_feature:
+        maxfeatlen = max([len(x) for x in feats_eval.keys()])
+        s += "\n\n{feat: <{fill}}   All MicroF1  OOV MicroF1".format(feat="Feature", fill=maxfeatlen)
+        for key in sorted(feats_eval.keys()):
+            if key == POS_KEY:
+                continue
+            s += "\n{feat: <{fill}}   {all:.2f}%       {oov:.2f}%".format(
+                feat=key, fill=maxfeatlen,
+                all=100*feats_eval.acc(att=key),
+                oov=100*oov_eval.acc(att=key)
+            )
+    logger.info(s)
+    return feats_eval.micro_f1(excl=no_eval_feats)
+    # return exact_eval.acc()   # for backwards compatibility
 
 
 def train(args, use_cuda=False):
@@ -284,10 +308,10 @@ def train(args, use_cuda=False):
 
     if len(dev_data) > 0:
         if not args.eval_interval:
-            #args.eval_interval = get_adaptive_eval_interval(dev_data.num_examples, 2000, 100)
             args.eval_interval = get_adaptive_eval_interval(len(train_data), len(dev_data))
         logger.info("Evaluating the model every {} steps".format(args.eval_interval))
     else:
+        args.eval_interval = args.max_steps
         logger.info("No dev data given, not evaluating the model")
     
     if not args.log_interval:
@@ -330,11 +354,7 @@ def train(args, use_cuda=False):
                 dev_preds = unsort(dev_preds, dev_data.data_orig_idx)
                 dev_doc.add_predictions(dev_preds)
                 dev_doc.write_to_file(args.dev_data_out)
-                results = dev_doc.evaluate(exclude=args.no_eval_feats)
-                dev_score = results["POS+FEATS micro-F1"]
-                #dev_score = results["UFEATS exact match"]   # for backwards compatibility
-                for k, v in results.items():
-                    logger.info("{}: {:.2f}%".format(k, 100*v))
+                dev_score = display_results(dev_doc, args.no_eval_feats)
 
                 train_loss = train_loss / args.eval_interval # avg loss per batch
                 logger.info("Step {}/{}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, max_steps, train_loss, dev_score))
@@ -350,11 +370,11 @@ def train(args, use_cuda=False):
                 dev_score_history += [dev_score]
 
             if global_step - last_best_step >= args.max_steps_before_stop:
-                if not using_amsgrad:
+                if args.optim == 'adam' and not using_amsgrad:
                     logger.info("Switching to AMSGrad")
                     last_best_step = global_step
                     using_amsgrad = True
-                    trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args.lr, betas=(.9, args.beta2), eps=1e-6)
+                    trainer.set_optimizer('amsgrad', lr=args.lr, betas=(.9, args.beta2), eps=1e-6)
                 else:
                     logger.info("Early stopping: dev_score has not improved in {} steps".format(args.max_steps_before_stop))
                     do_break = True
@@ -381,7 +401,7 @@ def train(args, use_cuda=False):
     return trainer, pretrained
 
 
-def evaluate(args, trainer=None, pretrained=None, use_cuda=False):
+def predict(args, trainer=None, pretrained=None, use_cuda=False):
     # load pretrained embeddings and model
     if not trainer:
         # load pretrained embeddings
@@ -406,10 +426,8 @@ def evaluate(args, trainer=None, pretrained=None, use_cuda=False):
     # write to file and score
     doc.add_predictions(preds)
     doc.write_to_file(args.test_data_out)
-    results = doc.evaluate(exclude=args.no_eval_feats)
-    for k, v in results.items():
-        logger.info("{}: {:.2f}%".format(k, 100*v))
-    
+    display_results(doc, args.no_eval_feats, per_feature=True)
+
 
 if __name__ == '__main__':
     main()

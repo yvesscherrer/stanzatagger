@@ -13,19 +13,6 @@ import data
 
 logger = logging.getLogger('stanza')
 
-
-def get_optimizer(name, parameters, lr, betas=(0.9, 0.999), eps=1e-8, momentum=0):
-    if name == 'sgd':
-        return torch.optim.SGD(parameters, lr=lr, momentum=momentum)
-    elif name == 'adagrad':
-        return torch.optim.Adagrad(parameters, lr=lr)
-    elif name == 'adam':
-        return torch.optim.Adam(parameters, lr=lr, betas=betas, eps=eps)
-    elif name == 'adamax':
-        return torch.optim.Adamax(parameters) # use default lr
-    else:
-        raise Exception("Unsupported optimizer: {}".format(name))
-
 def unpack_batch(batch, use_cuda):
     """ Unpack a batch from the data loader. """
     if use_cuda:
@@ -57,8 +44,7 @@ class Trainer(object):
             self.model = Tagger(args, vocab, emb_matrix=pretrain.emb if pretrain else None)
         
         if args is not None:
-            parameters = [p for p in self.model.parameters() if p.requires_grad]
-            self.optimizer = get_optimizer(args['optim'], parameters, args['lr'], betas=(0.9, args['beta2']), eps=1e-6)
+            self.set_optimizer(args['optim'], args['lr'], betas=(0.9, args['beta2']), eps=1e-6)
             self.max_grad_norm = args['max_grad_norm']
 
         self.use_cuda = use_cuda
@@ -66,6 +52,21 @@ class Trainer(object):
             self.model.cuda()
         else:
             self.model.cpu()
+    
+    def set_optimizer(self, name, lr, betas=(0.9, 0.999), eps=1e-8, momentum=0):
+        parameters = [p for p in self.model.parameters() if p.requires_grad]
+        if name == 'sgd':
+            self.optimizer = torch.optim.SGD(parameters, lr=lr, momentum=momentum)
+        elif name == 'adagrad':
+            self.optimizer = torch.optim.Adagrad(parameters, lr=lr)
+        elif name == 'adam':
+            self.optimizer = torch.optim.Adam(parameters, lr=lr, betas=betas, eps=eps)
+        elif name == 'amsgrad':
+            self.optimizer = torch.optim.Adam(parameters, amsgrad=True, lr=lr, betas=betas, eps=eps)
+        elif name == 'adamax':
+            self.optimizer = torch.optim.Adamax(parameters) # use default lr
+        else:
+            raise Exception("Unsupported optimizer: {}".format(name))
 
     def update(self, batch, eval=False):
         inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)

@@ -33,6 +33,9 @@ class Evaluator(object):
         self.correct = collections.defaultdict(int)
         self.gold = collections.defaultdict(int)
         self.observed = collections.defaultdict(int)
+    
+    def keys(self):
+        return self.gold.keys() | self.observed.keys()
 
     def add_instance(self, g, o):
         '''
@@ -111,6 +114,8 @@ class Evaluator(object):
                 corr = sum([self.correct[k] for k in self.correct if k[0] == att])
                 gold = sum([self.gold[k] for k in self.gold if k[0] == att])
                 return corr / gold
+            elif self.gold[att] == 0:
+                return 0.0
             else:
                 return self.correct[att] / self.gold[att]
         else:
