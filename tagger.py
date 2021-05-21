@@ -89,7 +89,7 @@ def parse_args(args=None):
 
     # data loading and saving
     parser_paths = parser.add_argument_group('File paths')
-    parser_paths.add_argument("--training-data", type=str, default=None, help="Input training data file")
+    parser_paths.add_argument("--training-data", nargs='+', type=str, default=[], help="Input training data file(s), a space-separated list of several file names can be given")
     parser_paths.add_argument("--emb-data", type=str, default=None, help="File from which to read the pretrained embeddings (supported file types: .txt, .vec, .xz, .gz)")
     parser_paths.add_argument('--emb-max-vocab', type=int, default=250000, help="Limit the pretrained embeddings to the first N entries (default: 250000)")
     parser_paths.add_argument("--dev-data", type=str, default=None, help="Input development/validation data file")

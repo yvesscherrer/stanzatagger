@@ -14,7 +14,10 @@ class Document(object):
         self.ignore_comments = ("id" in read_positions and read_positions["id"] == 0)
         self.copy_untouched = copy_untouched
         self.sentences = []
-        if from_file:
+        if isinstance(from_file, list):
+            for f in from_file:
+                self.load_from_file(f, sample_ratio, cut_first)
+        else:
             self.load_from_file(from_file, sample_ratio, cut_first)
         if from_string:
             self.load_from_string(from_string)

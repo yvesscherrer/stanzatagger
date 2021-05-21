@@ -151,3 +151,7 @@ class Tagger(nn.Module):
         preds.append(torch.cat(feats_preds, 2))
 
         return loss, preds
+
+if __name__ == "__main__":
+    print("This file cannot be used on its own.")
+    print("To launch the tagger, use tagger.py instead of model.py")
