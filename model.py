@@ -48,7 +48,7 @@ class Tagger(nn.Module):
             add_unsaved_module('pretrained_emb', nn.Embedding.from_pretrained(torch.from_numpy(emb_matrix), freeze=True))
             self.trans_pretrained = nn.Linear(emb_matrix.shape[1], self.args['transformed_dim'], bias=False)
             input_size += self.args['transformed_dim']
-        
+
         # recurrent layers
         self.taggerlstm = HighwayLSTM(input_size, self.args['tag_hidden_dim'], self.args['tag_num_layers'], batch_first=True, bidirectional=True, dropout=self.args['dropout'], rec_dropout=self.args['tag_rec_dropout'], highway_func=torch.tanh)
         self.drop_replacement = nn.Parameter(torch.randn(input_size) / np.sqrt(input_size))
@@ -82,17 +82,20 @@ class Tagger(nn.Module):
         self.worddrop = WordDropout(args['word_dropout'])
 
     def forward(self, word, word_mask, wordchars, wordchars_mask, pos, feats, pretrained, word_orig_idx, sentlens, wordlens):
-        
+
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
-        
+
         def get_batch_sizes(sentlens):
             b = []
             for i in range(max(sentlens)):
                 c = len([x for x in sentlens if x > i])
                 b.append(c)
             return torch.tensor(b)
-        
+
+        def pad(x):
+            return pad_packed_sequence(PackedSequence(x, batch_sizes), batch_first=True)[0]
+
         inputs = []
         if self.use_word:
             word_emb = self.word_emb(word)
@@ -107,9 +110,6 @@ class Tagger(nn.Module):
             pretrained_emb = self.trans_pretrained(pretrained_emb)
             pretrained_emb = pack(pretrained_emb)
             inputs += [pretrained_emb]
-
-        def pad(x):
-            return pad_packed_sequence(PackedSequence(x, batch_sizes), batch_first=True)[0]
 
         if self.use_char:
             char_reps = self.charmodel(wordchars, wordchars_mask, word_orig_idx, sentlens, wordlens)

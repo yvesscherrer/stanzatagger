@@ -21,13 +21,13 @@ class Document(object):
             self.load_from_file(from_file, sample_ratio, cut_first)
         if from_string:
             self.load_from_string(from_string)
-    
+
     def __len__(self):
         return len(self.sentences)
-    
+
     def __iter__(self):
         return iter(self.sentences)
-    
+
     def _load(self, f, sample_ratio, cut_first):
         new_sentences = []
         sent = Sentence()
@@ -44,7 +44,7 @@ class Document(object):
                 sent.add_token(array)
         if len(sent) > 0:
             new_sentences.append(sent)
-        
+
         if cut_first > 0 and len(new_sentences) > cut_first:
             new_sentences = new_sentences[:cut_first]
             logger.info("Reduce dataset to first {} instances".format(cut_first))
@@ -52,10 +52,10 @@ class Document(object):
             keep = int(sample_ratio * len(new_sentences))
             new_sentences = random.sample(new_sentences, keep)
             logger.info("Subsample dataset with rate {:g}".format(sample_ratio))
-        
+
         self.sentences.extend(new_sentences)
         return len(new_sentences)
-    
+
     def load_from_file(self, filename, sample_ratio=1.0, cut_first=-1):
         new_sents = self._load(open(filename), sample_ratio, cut_first)
         logger.info("{} sentences loaded from file {}".format(new_sents, filename))
@@ -63,7 +63,7 @@ class Document(object):
     def load_from_string(self, s, sample_ratio=1.0, cut_first=-1):
         new_sents = self._load(io.StringIO(s), sample_ratio, cut_first)
         logger.info("{} sentences loaded from string".format(new_sents))
-    
+
     def _write(self, f, pred=True):
         for sent in self.sentences:
             for token in sent:
@@ -87,16 +87,16 @@ class Document(object):
 
                 f.write("\t".join(array) + "\n")
             f.write("\n")
-    
+
     def write_to_file(self, filename, pred=True):
         self._write(open(filename, 'w'), pred=pred)
         logger.info("Predictions written to file {}".format(filename))
-    
+
     def write_to_string(self, pred=True):
         s = io.StringIO()
         self._write(s, pred=pred)
         return s
-    
+
     def provide_data(self):
         doc_array = []
         for sent in self.sentences:
@@ -113,7 +113,7 @@ class Document(object):
                 sent_array.append(token_array)
             doc_array.append(sent_array)
         return doc_array
-    
+
     def add_predictions(self, doc_array):
         assert(len(doc_array) == len(self.sentences))
         for sent_array, sent in zip(doc_array, self.sentences):
@@ -124,7 +124,7 @@ class Document(object):
                 token.pred = {"pos": sent_array[ti][0], "feats": sent_array[ti][1], "unk": sent_array[ti][2]}
                 ti += 1
             assert(ti == len(sent_array))
-    
+
     def evaluate(self):
         feats_evaluator = Evaluator(mode="by_feats")
         feats_oov_evaluator = Evaluator(mode="by_feats")
@@ -144,14 +144,14 @@ class Document(object):
                     if token.given[self.read_positions["feats"]] not in ("_", ""):
                         gold_feats = dict([x.split("=", 1) for x in token.given[self.read_positions["feats"]].split("|")])
                     exact_evaluator.add_instance(gold_feats, pred_feats)    # do not add POS here
-                
+
                 if "pos" in token.pred and "pos" in self.read_positions:
                     pred_feats.update({POS_KEY: token.pred["pos"]})
                     gold_feats.update({POS_KEY: token.given[self.read_positions["pos"]]})
                     feats_evaluator.add_instance(gold_feats, pred_feats)
                     if "unk" in token.pred and token.pred["unk"]:
                         feats_oov_evaluator.add_instance(gold_feats, pred_feats)
-        
+
         return feats_evaluator, feats_oov_evaluator, exact_evaluator
 
 
@@ -213,7 +213,7 @@ class Document(object):
         """
         if len(self.sentences) == 0:
             return []
-        
+
         can_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == punct_tag
         should_augment_nopunct = lambda x: x.tokens[-1].given[self.read_positions['pos']] == punct_tag
 
@@ -233,7 +233,7 @@ class Document(object):
                     #       or not deep copy any of this
                     new_sentence = sentence.copy(remove_last=True)
                     new_data.append(new_sentence)
-        
+
         self.sentences.extend(new_data)
         logger.info("{} sentences available after augmentation".format(len(self.sentences)))
 
@@ -241,7 +241,7 @@ class Document(object):
 class Sentence(object):
     def __init__(self):
         self.tokens = []
-    
+
     def __len__(self):
         return len(self.tokens)
 
@@ -251,7 +251,7 @@ class Sentence(object):
     def add_token(self, token):
         t = Token(token)
         self.tokens.append(t)
-    
+
     def copy(self, remove_last=False):
         new = Sentence()
         if remove_last:

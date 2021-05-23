@@ -15,8 +15,7 @@ ROOT_ID = 3
 VOCAB_PREFIX = [PAD, UNK, EMPTY, ROOT]
 
 class BaseVocab:
-    """ A base class for common vocabulary operations. Each subclass should at least 
-    implement its own build_vocab() function."""
+    """ A base class for common vocabulary operations. Each subclass should at least implement its own build_vocab() function."""
     def __init__(self, data=None, idx=0, cutoff=0, lower=False):
         self.data = data
         self.idx = idx
@@ -30,8 +29,7 @@ class BaseVocab:
         raise NotImplementedError()
 
     def state_dict(self):
-        """ Returns a dictionary containing all states that are necessary to recover
-        this vocab. Useful for serialization."""
+        """ Returns a dictionary containing all states that are necessary to recover this vocab. Useful for serialization."""
         state = OrderedDict()
         for attr in self.state_attrs:
             if hasattr(self, attr):

@@ -33,7 +33,7 @@ class Evaluator(object):
         self.correct = collections.defaultdict(int)
         self.gold = collections.defaultdict(int)
         self.observed = collections.defaultdict(int)
-    
+
     def keys(self):
         return self.gold.keys() | self.observed.keys()
 
@@ -54,7 +54,7 @@ class Evaluator(object):
             self.observed[okey] += 1
             if gkey == okey:
                 self.correct[gkey] += 1
-        
+
         else:
             for (k, v) in g.items():
                 if self.only_univ and k != POS_KEY and k not in UNIV_FEATURES:

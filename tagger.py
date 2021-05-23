@@ -169,7 +169,7 @@ def validate_args(args):
         args.c_token_index_out = -1
         args.char_num_layers = 0
         args.char_emb_dim = 0
-    
+
     if args.w_token_index < 0:
         logger.info("Disable word embeddings")
         args.w_token_index = -1
@@ -188,28 +188,28 @@ def validate_args(args):
         args.emb_data = None
         args.embeddings = None
         args.embeddings_save = None
-    
+
     if args.c_token_index < 0 and args.w_token_index < 0:
         raise RuntimeError("Cannot use tagger without any token information.")
     if args.training_data and args.pos_index < 0:
         raise RuntimeError("POS tag field is required for training the tagger.")
-    
+
     if args.debug:
         logger.info("Debug mode: reduce train and dev set")
         args.sample_train = 0.05
         args.cut_dev = 100
         args.batch_size = -1
-    
+
     if args.model_save and args.emb_data and (args.embeddings_save is None):
         logger.warning("Pre-trained embeddings must be saved as a .pt file!")
         args.embeddings_save = args.model_save.replace(".pt", ".emb.pt")
         logger.warning("Saving them as {}".format(args.embeddings_save))
-    
+
     ensure_dir(args.model_save)
     ensure_dir(args.embeddings_save)
     ensure_dir(args.dev_data_out)
     ensure_dir(args.test_data_out)
-    
+
 
 def get_read_format_args(args):
     return {"id": args.number_index,
@@ -234,7 +234,7 @@ def main(args=None):
     if args.training_data:
         logger.info("Running tagger in training mode...")
         trainer, pretrained = train(args, use_cuda)
-    
+
     if args.test_data:
         logger.info("Running tagger in prediction mode...")
         predict(args, trainer, pretrained, use_cuda)
@@ -260,7 +260,7 @@ def display_results(doc, no_eval_feats, per_feature=False):
         100*oov_eval.micro_f1(excl=[POS_KEY]+no_eval_feats)
     )
     s += "\nUFEATS     {:.2f}% (exact match)".format(100*exact_eval.acc())
-    
+
     if per_feature:
         maxfeatlen = max([len(x) for x in feats_eval.keys()])
         s += "\n\n{feat: <{fill}}   All MicroF1  OOV MicroF1".format(feat="Feature", fill=maxfeatlen)
@@ -301,7 +301,7 @@ def train(args, use_cuda=False):
 
     if len(train_data) == 0:
         raise RuntimeError("Cannot start training because no training data is available")
-       
+
     logger.info("Loading development data...")
     dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched, cut_first=args.cut_dev)
     dev_data = DataLoader(dev_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
@@ -313,7 +313,7 @@ def train(args, use_cuda=False):
     else:
         args.eval_interval = args.max_steps
         logger.info("No dev data given, not evaluating the model")
-    
+
     if not args.log_interval:
         args.log_interval = get_adaptive_log_interval(args.batch_size, max_interval=args.eval_interval, gpu=use_cuda)
     logger.info("Showing log every {} steps".format(args.log_interval))
@@ -409,7 +409,7 @@ def predict(args, trainer=None, pretrained=None, use_cuda=False):
         # load model
         logger.info("Loading model from {}".format(args.model))
         trainer = Trainer(model_file=args.model, pretrain=pretrained, use_cuda=use_cuda)
-    
+
     # load data
     logger.info("Loading prediction data...")
     doc = Document(from_file=args.test_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched)

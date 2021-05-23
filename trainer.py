@@ -42,7 +42,7 @@ class Trainer(object):
             # build model from scratch
             self.vocab = vocab
             self.model = Tagger(args, vocab, emb_matrix=pretrain.emb if pretrain else None)
-        
+
         if args is not None:
             self.set_optimizer(args['optim'], args['lr'], betas=(0.9, args['beta2']), eps=1e-6)
             self.max_grad_norm = args['max_grad_norm']
@@ -52,7 +52,7 @@ class Trainer(object):
             self.model.cuda()
         else:
             self.model.cpu()
-    
+
     def set_optimizer(self, name, lr, betas=(0.9, 0.999), eps=1e-8, momentum=0):
         parameters = [p for p in self.model.parameters() if p.requires_grad]
         if name == 'sgd':

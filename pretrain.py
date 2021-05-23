@@ -35,7 +35,7 @@ class Pretrain:
             self.load_from_text(from_text)
         elif from_pt:
             self.load_from_pt(from_pt)
-    
+
 
     def load_from_pt(self, filename):
         if not filename:
@@ -44,18 +44,18 @@ class Pretrain:
         if not os.path.exists(filename):
             logger.warning("Cannot load pretrained embeddings, file not found: {}".format(filename))
             return
-        
+
         data = torch.load(filename, lambda storage, loc: storage)
         logger.info("Loaded pretrained embeddings from {}".format(filename))
         self.vocab = PretrainedWordVocab.load_state_dict(data['vocab'])
         self.emb = data['emb']
-    
+
 
     def save_to_pt(self, filename):
         if not filename:
             logger.warning("Cannot save pretrained embeddings, no file name given.")
             return
-        
+
         # should not infinite loop since the load function sets _vocab and _emb before trying to save
         data = {'vocab': self.vocab.state_dict(), 'emb': self.emb}
         try:
@@ -65,7 +65,7 @@ class Pretrain:
             raise
         except BaseException as e:
             logger.warning("Saving pretrained data failed due to the following exception... continuing anyway.\n\t{}".format(e))
-    
+
 
     def load_from_text(self, filename):
         if not filename:
@@ -74,7 +74,7 @@ class Pretrain:
         if not os.path.exists(filename):
             logger.warning("Cannot load pretrained embeddings, file not found: {}".format(filename))
             return
-        
+
         logger.info("Loading pretrained vectors from {}".format(filename))
         if filename.endswith(".xz"):
             words, emb, failed = self.read_from_file(filename, open_func=lzma.open)
@@ -82,19 +82,19 @@ class Pretrain:
             words, emb, failed = self.read_from_file(filename, open_func=gzip.open)
         else:
             words, emb, failed = self.read_from_file(filename, open_func=open)
-        
+
         if failed > 0: # recover failure
             emb = emb[:-failed]
         if len(emb) - len(VOCAB_PREFIX) != len(words):
             raise Exception("Loaded number of vectors does not match number of words.")
-        
+
         # Use a fixed vocab size
         if self.max_vocab > len(VOCAB_PREFIX) and self.max_vocab < len(words):
             words = words[:self.max_vocab - len(VOCAB_PREFIX)]
             emb = emb[:self.max_vocab]
         self.emb = emb
         self.vocab = PretrainedWordVocab(words)
-    
+
 
     def read_from_file(self, filename, open_func=open):
         """

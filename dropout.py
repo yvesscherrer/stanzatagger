@@ -25,7 +25,7 @@ class WordDropout(nn.Module):
             res = res + dropmask.float() * replacement
 
         return res
-    
+
     def extra_repr(self):
         return 'p={}'.format(self.dropprob)
 
@@ -50,7 +50,7 @@ class LockedDropout(nn.Module):
 
         mask = m.div(1 - self.dropprob).expand_as(x)
         return mask * x
-    
+
     def extra_repr(self):
         return 'p={}'.format(self.dropprob)
 
@@ -71,7 +71,7 @@ class SequenceUnitDropout(nn.Module):
         dropmask = torch.rand(*masksize, device=x.device) < self.dropprob
         res = x.masked_fill(dropmask, self.replacement_id)
         return res
-    
+
     def extra_repr(self):
         return 'p={}, replacement_id={}'.format(self.dropprob, self.replacement_id)
 

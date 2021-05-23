@@ -15,7 +15,7 @@ class CharacterModel(nn.Module):
 
         # char embeddings
         self.char_emb = nn.Embedding(len(vocab['char']), self.args['char_emb_dim'], padding_idx=0)
-        if self.attn: 
+        if self.attn:
             self.char_attn = nn.Linear(self.num_dir * self.args['char_hidden_dim'], 1, bias=False)
             self.char_attn.weight.data.zero_()
 
@@ -34,7 +34,7 @@ class CharacterModel(nn.Module):
         output = self.charlstm(embs, wordlens, hx=(\
                 self.charlstm_h_init.expand(self.num_dir * self.args['char_num_layers'], batch_size, self.args['char_hidden_dim']).contiguous(), \
                 self.charlstm_c_init.expand(self.num_dir * self.args['char_num_layers'], batch_size, self.args['char_hidden_dim']).contiguous()))
-         
+
         # apply attention, otherwise take final states
         if self.attn:
             char_reps = output[0]

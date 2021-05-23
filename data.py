@@ -67,7 +67,7 @@ class DataLoader:
             self.vocab = self.init_vocab(data)
         else:
             self.vocab = vocab
-        
+
         # handle pretrain
         self.pretrain_vocab = pretrain.vocab if pretrain else None
 
@@ -162,7 +162,7 @@ class DataLoader:
         if self.eval:
             (data, ), self.data_orig_idx = sort_all([data], [len(x[0]) for x in data])
         else:
-            data = sorted(data, key = lambda x: len(x[0]), reverse=random.random() > .5)            
+            data = sorted(data, key = lambda x: len(x[0]), reverse=random.random() > .5)
 
         if self.batch_size < 0:
             res = [[x] for x in data]
