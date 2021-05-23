@@ -129,7 +129,7 @@ def parse_args(args=None):
     parser_net.add_argument('--pos-emb-dim', type=int, default=50, help="Size of POS embeddings that are fed to predict the morphology features (default: 50). Use negative value to use shared, i.e. non-hierarchical representations for POS and morphology")
     parser_net.add_argument('--char-hidden-dim', type=int, default=400, help="Size of character LSTM hidden layers (default: 400)")
     parser_net.add_argument('--char-num-layers', type=int, default=1, help="Number of character LSTM layers (default: 1). Use 0 to disable character LSTM")
-    parser_net.add_argument('--char-bidir', action='store_true', help="Uses a bidirectional LSTM for the character embeddings (default: false)")
+    parser_net.add_argument('--char-unidir', dest='char_bidir', action='store_false', help="Uses a unidirectional LSTM for the character embeddings (default: bidirectional)")
     parser_net.add_argument('--tag-hidden-dim', type=int, default=200, help="Size of tagger LSTM hidden layers (default: 200)")
     parser_net.add_argument('--tag-num-layers', type=int, default=2, help="Number of tagger LSTM layers (default: 2)")
     # TODO: merge two lines below, improve help
