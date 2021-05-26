@@ -102,7 +102,7 @@ class Trainer(object):
         pred_tokens = [[[pos_seqs[i][j], feats_seqs[i][j], w_unk_seqs[i][j] and p_unk_seqs[i][j]] for j in range(sentlens[i])] for i in range(batch_size)]
         if unsort:
             pred_tokens = data.unsort(pred_tokens, orig_idx)
-        return pred_tokens
+        return pred_tokens, loss.data.item()
 
     def save(self, filename, skip_modules=True):
         model_state = self.model.state_dict()

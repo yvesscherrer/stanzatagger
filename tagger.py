@@ -96,6 +96,7 @@ def parse_args(args=None):
     parser_paths.add_argument("--dev-data-out", type=str, default=None, help="Output file for annotated development/validation data")
     parser_paths.add_argument("--test-data", type=str, default=None, help="Input test data file")
     parser_paths.add_argument("--test-data-out", type=str, default=None, help="Output file for annotated test data")
+    parser_paths.add_argument("--scores-out", default=None, help="TSV file in which training scores and statistics are saved (default: None)")
     parser_paths.add_argument("--model", default=None, help="Binary file (.pt) containing the parameters of a trained model")
     parser_paths.add_argument("--model-save", default=None, help="Binary file (.pt) in which the parameters of a trained model are saved")
     parser_paths.add_argument("--embeddings", default=None, help="Binary file (.pt) containing the parameters of the pretrained embeddings")
@@ -118,6 +119,7 @@ def parse_args(args=None):
     parser_data.add_argument("--no-eval-feats", nargs='+', default=[], help="Space-separated list of morphological features that should be ignored during evaluation. Typically used for additional tasks in multitask settings.")
     parser_data.add_argument("--mask-other-fields", dest="copy_untouched", action="store_false", help="Replaces fields in input that are not used by the tagger (e.g. lemmas, dependencies) with '_' instead of copying them.", default=True)
     parser_data.add_argument('--augment-nopunct', nargs='?', type=float, const=0.1, default=None, help='Augment the training data by copying some amount of punct-ending sentences as non-punct (default: 0.1, corresponding to 10%%)')
+    parser_data.add_argument('--punct-tag', type=str, default='PUNCT', help="POS tag of sentence-final punctuation used for augmentation (default: PUNCT)")
     parser_data.add_argument('--sample-train', type=float, default=1.0, help='Subsample training data to proportion of N (default: 1.0)')
     parser_data.add_argument('--cut-dev', type=int, default=-1, help='Cut dev data to first N sentences (default: keep all)')
     parser_data.add_argument("--debug", action="store_true", help="Debug mode. This is a shortcut for '--sample-train 0.05 --cut-dev 100 --batch-size -1'")
@@ -216,6 +218,7 @@ def validate_args(args):
     ensure_dir(args.embeddings_save)
     ensure_dir(args.dev_data_out)
     ensure_dir(args.test_data_out)
+    ensure_dir(args.scores_out)
 
 
 def get_read_format_args(args):
@@ -308,7 +311,7 @@ def train(args, use_cuda=False):
     logger.info("Loading training data...")
     train_doc = Document(from_file=args.training_data, read_positions=get_read_format_args(args), sample_ratio=args.sample_train)
     if args.augment_nopunct:
-        train_doc.augment_punct(args.augment_nopunct)
+        train_doc.augment_punct(args.augment_nopunct, args.punct_tag)
 
     # continue training existing model
     if args.model:
@@ -343,17 +346,24 @@ def train(args, use_cuda=False):
     dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched, cut_first=args.cut_dev)
     dev_data = DataLoader(dev_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
 
+    if not args.eval_interval:
+        args.eval_interval = get_adaptive_eval_interval(len(train_data), len(dev_data) if dev_data else 0)
     if len(dev_data) > 0:
-        if not args.eval_interval:
-            args.eval_interval = get_adaptive_eval_interval(len(train_data), len(dev_data))
         logger.info("Evaluating the model every {} steps".format(args.eval_interval))
     else:
-        args.eval_interval = args.max_steps
         logger.info("No dev data given, not evaluating the model")
 
     if not args.log_interval:
         args.log_interval = get_adaptive_log_interval(args.batch_size, max_interval=args.eval_interval, gpu=use_cuda)
     logger.info("Showing log every {} steps".format(args.log_interval))
+
+    if args.scores_out:
+        scores_file = open(args.scores_out, "w")
+        scores_file.write("Step\tEpoch\tTrainLoss\tDevLoss\tDevScore\tNewBest\n")
+        scores_file.flush()
+    else:
+        scores_file = None
+
 
     global_step = 0
     epoch = 0
@@ -381,30 +391,40 @@ def train(args, use_cuda=False):
                 duration = time.time() - start_time
                 logger.info(format_str.format(global_step, max_steps, loss, duration, current_lr))
 
-            if len(dev_data) > 0 and global_step % args.eval_interval == 0:
-                # eval on dev
-                logger.info("Evaluating on dev set...")
-                dev_preds = []
-                for dev_batch in dev_data:
-                    preds = trainer.predict(dev_batch)
-                    dev_preds += preds
-                dev_preds = unsort(dev_preds, dev_data.data_orig_idx)
-                dev_doc.add_predictions(dev_preds)
-                dev_doc.write_to_file(args.dev_data_out)
-                dev_score = display_results(dev_doc, args.no_eval_feats, report_oov=args.w_token_index >= 0)
+            if global_step % args.eval_interval == 0:
+                new_best = ""
+                dev_loss = 0.0
+                dev_score = 0.0
+
+                if len(dev_data) > 0:
+                    logger.info("Evaluating on dev set...")
+                    dev_preds = []
+                    dev_loss = 0.0
+                    for dev_batch in dev_data:
+                        preds, loss = trainer.predict(dev_batch)
+                        dev_preds += preds
+                        dev_loss += float(loss)
+                    dev_preds = unsort(dev_preds, dev_data.data_orig_idx)
+                    dev_loss = dev_loss / len(dev_data)
+                    dev_doc.add_predictions(dev_preds)
+                    dev_doc.write_to_file(args.dev_data_out)
+                    dev_score = display_results(dev_doc, args.no_eval_feats, report_oov=args.w_token_index >= 0)
+
+                    # save best model
+                    if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
+                        logger.info("New best model found")
+                        new_best = "*"
+                        last_best_step = global_step
+                        if args.model_save:
+                            trainer.save(args.model_save)
+                    dev_score_history += [dev_score]
 
                 train_loss = train_loss / args.eval_interval # avg loss per batch
-                logger.info("Step {}/{}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, max_steps, train_loss, dev_score))
+                logger.info("Step {}/{}: train_loss = {:.6f}, dev_loss = {:.6f}, dev_score = {:.4f}".format(global_step, max_steps, train_loss, dev_loss, dev_score))
+                if scores_file:
+                    scores_file.write("{}\t{}\t{:.6f}\t{:.6f}\t{:.4f}\t{}\n".format(global_step, epoch, train_loss, dev_loss, dev_score, new_best))
+                    scores_file.flush()
                 train_loss = 0
-
-                # save best model
-                if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
-                    logger.info("New best model found")
-                    last_best_step = global_step
-                    if args.model_save:
-                        trainer.save(args.model_save)
-
-                dev_score_history += [dev_score]
 
             if global_step - last_best_step >= args.max_steps_before_stop:
                 if args.optim == 'adam' and not using_amsgrad:
@@ -457,7 +477,7 @@ def predict(args, trainer=None, pretrained=None, use_cuda=False):
     logger.info("Start prediction...")
     preds = []
     for batch in data:
-        preds += trainer.predict(batch)
+        preds += trainer.predict(batch)[0]      # don't keep loss
     preds = unsort(preds, data.data_orig_idx)
 
     # write to file and score
