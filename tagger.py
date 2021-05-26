@@ -199,6 +199,13 @@ def validate_args(args):
         args.sample_train = 0.05
         args.cut_dev = 100
         args.batch_size = -1
+    
+    if args.training_data and args.model:
+        logger.info("Retraining existing model {} with new training data {}".format(args.model, ",".join(args.training_data)))
+        logger.info("Parameters of the 'Network architecture' section will be ignored")
+    
+    if args.model and args.emb_data:
+        raise RuntimeError("Cannot load embeddings in text format with --emb-data together with an existing model. Load the embeddings in binary (.pt) format with --embeddings.")
 
     if args.model_save and args.emb_data and (args.embeddings_save is None):
         logger.warning("Pre-trained embeddings must be saved as a .pt file!")
@@ -278,24 +285,34 @@ def display_results(doc, no_eval_feats, per_feature=False):
 
 
 def train(args, use_cuda=False):
-    # load pretrained embeddings if needed
-    if args.emb_data:
-        pretrained = Pretrain(from_text=args.emb_data, max_vocab=args.emb_max_vocab)
-        pretrained.save_to_pt(args.embeddings_save)
-    else:
-        pretrained = None
-
-    # load data
     logger.info("Loading training data...")
     train_doc = Document(from_file=args.training_data, read_positions=get_read_format_args(args), sample_ratio=args.sample_train)
     if args.augment_nopunct:
         train_doc.augment_punct(args.augment_nopunct)
-    # load existing model if available
+
+    # continue training existing model
     if args.model:
+        pretrained = None
+        if args.embeddings:
+            pretrained = Pretrain(from_pt=args.embeddings)
+            if args.embeddings_save:
+                pretrained.save_to_pt(args.embeddings_save)
+        
         logger.info("Loading model from {}".format(args.model))
         trainer = Trainer(model_file=args.model, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
         train_data = DataLoader(train_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=False)
+
+    # create new model from scratch and start training
     else:
+        pretrained = None
+        if args.embeddings:
+            pretrained = Pretrain(from_pt=args.embeddings)
+        elif args.emb_data:
+            pretrained = Pretrain(from_text=args.emb_data, max_vocab=args.emb_max_vocab)
+        if pretrained and args.embeddings_save:
+            pretrained.save_to_pt(args.embeddings_save)
+
+        logger.info("Creating new model...")
         train_data = DataLoader(train_doc, args.batch_size, vocab=None, pretrain=pretrained, evaluation=False, word_cutoff=args.w_token_min_freq)
         trainer = Trainer(vocab=train_data.vocab, pretrain=pretrained, args=vars(args), use_cuda=use_cuda)
 
