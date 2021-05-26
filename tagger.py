@@ -247,38 +247,58 @@ def main(args=None):
         predict(args, trainer, pretrained, use_cuda)
 
 
-def display_results(doc, no_eval_feats, per_feature=False):
+def display_results(doc, no_eval_feats, per_feature=False, report_oov=True):
     feats_eval, oov_eval, exact_eval = doc.evaluate()
     if feats_eval.instance_count == 0:
         return 0.0
     s = "Evaluation:"
-    s += "\nOOV rate:  {:.2f}%".format(100*oov_eval.instance_count / feats_eval.instance_count)
-    s += "\n           All MicroF1  OOV MicroF1"
-    s += "\nPOS+FEATS  {:.2f}%       {:.2f}%".format(
-        100*feats_eval.micro_f1(excl=no_eval_feats),
-        100*oov_eval.micro_f1(excl=no_eval_feats)
-    )
-    s += "\nPOS        {:.2f}%       {:.2f}%".format(
-        100*feats_eval.acc(att=POS_KEY),
-        100*oov_eval.acc(att=POS_KEY)
-    )
-    s += "\nFEATS      {:.2f}%       {:.2f}%".format(
-        100*feats_eval.micro_f1(excl=[POS_KEY]+no_eval_feats),
-        100*oov_eval.micro_f1(excl=[POS_KEY]+no_eval_feats)
-    )
-    s += "\nUFEATS     {:.2f}% (exact match)".format(100*exact_eval.acc())
+    if report_oov:
+        s += "\nOOV rate:  {:.2f}%".format(100*oov_eval.instance_count / feats_eval.instance_count)
+        s += "\n           All MicroF1  OOV MicroF1"
+        s += "\nPOS+FEATS  {:.2f}%       {:.2f}%".format(
+            100*feats_eval.micro_f1(excl=no_eval_feats),
+            100*oov_eval.micro_f1(excl=no_eval_feats)
+        )
+        s += "\nPOS        {:.2f}%       {:.2f}%".format(
+            100*feats_eval.acc(att=POS_KEY),
+            100*oov_eval.acc(att=POS_KEY)
+        )
+        s += "\nFEATS      {:.2f}%       {:.2f}%".format(
+            100*feats_eval.micro_f1(excl=[POS_KEY]+no_eval_feats),
+            100*oov_eval.micro_f1(excl=[POS_KEY]+no_eval_feats)
+        )
+        s += "\nUFEATS     {:.2f}% (exact match)".format(100*exact_eval.acc())
+    else:
+        s += "\n           All MicroF1"
+        s += "\nPOS+FEATS  {:.2f}%".format(
+            100*feats_eval.micro_f1(excl=no_eval_feats))
+        s += "\nPOS        {:.2f}%".format(
+            100*feats_eval.acc(att=POS_KEY))
+        s += "\nFEATS      {:.2f}%".format(
+            100*feats_eval.micro_f1(excl=[POS_KEY]+no_eval_feats))
+        s += "\nUFEATS     {:.2f}% (exact match)".format(100*exact_eval.acc())
 
     if per_feature:
         maxfeatlen = max([len(x) for x in feats_eval.keys()])
-        s += "\n\n{feat: <{fill}}   All MicroF1  OOV MicroF1".format(feat="Feature", fill=maxfeatlen)
+        if report_oov:
+            s += "\n\n{feat: <{fill}}   All MicroF1  OOV MicroF1".format(feat="Feature", fill=maxfeatlen)
+        else:
+            s += "\n\n{feat: <{fill}}   All MicroF1".format(feat="Feature", fill=maxfeatlen)
+
         for key in sorted(feats_eval.keys()):
             if key == POS_KEY:
                 continue
-            s += "\n{feat: <{fill}}   {all:.2f}%       {oov:.2f}%".format(
-                feat=key, fill=maxfeatlen,
-                all=100*feats_eval.acc(att=key),
-                oov=100*oov_eval.acc(att=key)
-            )
+            if report_oov:
+                s += "\n{feat: <{fill}}   {all:.2f}%       {oov:.2f}%".format(
+                    feat=key, fill=maxfeatlen,
+                    all=100*feats_eval.acc(att=key),
+                    oov=100*oov_eval.acc(att=key)
+                )
+            else:
+                s += "\n{feat: <{fill}}   {all:.2f}%".format(
+                    feat=key, fill=maxfeatlen,
+                    all=100*feats_eval.acc(att=key)
+                )
     logger.info(s)
     return feats_eval.micro_f1(excl=no_eval_feats)
     # return exact_eval.acc()   # for backwards compatibility
@@ -371,7 +391,7 @@ def train(args, use_cuda=False):
                 dev_preds = unsort(dev_preds, dev_data.data_orig_idx)
                 dev_doc.add_predictions(dev_preds)
                 dev_doc.write_to_file(args.dev_data_out)
-                dev_score = display_results(dev_doc, args.no_eval_feats)
+                dev_score = display_results(dev_doc, args.no_eval_feats, report_oov=args.w_token_index >= 0)
 
                 train_loss = train_loss / args.eval_interval # avg loss per batch
                 logger.info("Step {}/{}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, max_steps, train_loss, dev_score))
@@ -443,7 +463,7 @@ def predict(args, trainer=None, pretrained=None, use_cuda=False):
     # write to file and score
     doc.add_predictions(preds)
     doc.write_to_file(args.test_data_out)
-    display_results(doc, args.no_eval_feats, per_feature=True)
+    display_results(doc, args.no_eval_feats, per_feature=True, report_oov=args.w_token_index >= 0)
 
 
 if __name__ == '__main__':

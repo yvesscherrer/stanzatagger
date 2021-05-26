@@ -71,15 +71,16 @@ class DataLoader:
         # handle pretrain
         self.pretrain_vocab = pretrain.vocab if pretrain else None
 
+        self.num_tokens = 0
         data = self.preprocess(data, self.vocab, self.pretrain_vocab)
+        self.num_examples = len(data)
         # shuffle for training
         if not self.eval:
             random.shuffle(data)
-        self.num_examples = len(data)
 
         # chunk into batches
         self.data = self.chunk_batches(data)
-        logger.info("{} batches created from {} sentences (batch size: {})".format(len(self.data), self.num_examples, self.batch_size))
+        logger.info("{} batches created from {} sentences with {} tokens (batch size: {})".format(len(self.data), self.num_examples, self.num_tokens, self.batch_size))
 
     def init_vocab(self, data):
         assert self.eval == False # for eval vocab must exist
@@ -106,6 +107,7 @@ class DataLoader:
             else:
                 processed_sent += [[PAD_ID] * len(sent)]
             processed.append(processed_sent)
+            self.num_tokens += len(sent)
         return processed
 
     def __len__(self):

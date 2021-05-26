@@ -96,10 +96,10 @@ class Trainer(object):
         loss, preds = self.model(word, word_mask, wordchars, wordchars_mask, pos, feats, pretrained, word_orig_idx, sentlens, wordlens)
         pos_seqs = [self.vocab['pos'].unmap(sent) for sent in preds[0].tolist()]
         feats_seqs = [self.vocab['feats'].unmap(sent) for sent in preds[1].tolist()]
-        w_unk_seqs = [[tokid == UNK_ID for tokid in sent] for sent in word]
-        p_unk_seqs = [[tokid == UNK_ID for tokid in sent] for sent in pretrained]
+        w_unk_seqs = [[(not self.model.use_word) or tokid == UNK_ID for tokid in sent] for sent in word]
+        p_unk_seqs = [[(not self.model.use_pretrained) or tokid == UNK_ID for tokid in sent] for sent in pretrained]
 
-        pred_tokens = [[[pos_seqs[i][j], feats_seqs[i][j], w_unk_seqs[i][j] or p_unk_seqs[i][j]] for j in range(sentlens[i])] for i in range(batch_size)]
+        pred_tokens = [[[pos_seqs[i][j], feats_seqs[i][j], w_unk_seqs[i][j] and p_unk_seqs[i][j]] for j in range(sentlens[i])] for i in range(batch_size)]
         if unsort:
             pred_tokens = data.unsort(pred_tokens, orig_idx)
         return pred_tokens
