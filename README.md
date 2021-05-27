@@ -25,7 +25,7 @@ It is designed as a replacement of my earlier [lstmtagger](https://github.com/yv
 
 ## Usage
 
-### Training
+The following command trains a model on the French Sequoia treebank:
 
 ```
 python tagger.py \
@@ -39,7 +39,7 @@ python tagger.py \
         --augment-nopunct
 ```
 
-### Prediction
+The following command uses the trained model to annotate the test set:
 
 ```
 python tagger.py \
@@ -49,7 +49,7 @@ python tagger.py \
         --batch-size 500
 ```
 
-### Combined command
+The two commands above can be combined in a single command to avoid reloading the model:
 
 ```
 python tagger.py \
