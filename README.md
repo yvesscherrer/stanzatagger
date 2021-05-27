@@ -67,13 +67,17 @@ python tagger.py \
 
 ## Full list of parameters
 
+General parameters:
+
 ```
-optional arguments:
   -h, --help            show this help message and exit
   --seed SEED           Set the random seed
   --cpu                 Force CPU even if GPU is available
+```
 
 File paths:
+
+```
   --training-data TRAINING_DATA [TRAINING_DATA ...]
                         Input training data file(s), a space-separated list of
                         several file names can be given
@@ -103,8 +107,11 @@ File paths:
   --embeddings-save EMBEDDINGS_SAVE
                         Binary file (.pt) in which the parameters of the
                         pretrained embeddings are saved
+```
 
 Data formatting and evaluation:
+
+```
   --number-index NUMBER_INDEX
                         Field in which the word numbers are stored (default: 0)
   --number-index-out NUMBER_INDEX_OUT
@@ -167,8 +174,11 @@ Data formatting and evaluation:
   --cut-dev CUT_DEV     Cut dev data to first N sentences (default: keep all)
   --debug               Debug mode. This is a shortcut for '--sample-train 0.05
                         --cut-dev 100 --batch-size -1'
+```
 
 Network architecture:
+
+```
   --word-emb-dim WORD_EMB_DIM
                         Size of word embedding layer (default: 75). Use negative
                         value to turn off word embeddings
@@ -207,8 +217,11 @@ Network architecture:
                         Should only be used with more than one layer
   --word-dropout WORD_DROPOUT
                         Word dropout (default: 0.33)
+```
 
 Training and optimization:
+
+```
   --batch-size BATCH_SIZE
                         Batch size in tokens (default: 5000). Use negative value
                         to use single sentences
