@@ -4,7 +4,7 @@ This is a stand-alone version of the POS-tagger of the [stanza](https://stanford
 
 It is designed as a replacement of my earlier [lstmtagger](https://github.com/yvesscherrer/lstmtagger).
 
-## Differences compared to lstmtagger
+### Differences compared to lstmtagger
 
 - Based on PyTorch, supports both CPU and GPU
 - Supports early stopping, and a wider range of optimizers (Adam as default)
@@ -13,7 +13,7 @@ It is designed as a replacement of my earlier [lstmtagger](https://github.com/yv
 - Avoids inconsistent predictions by feeding the predicted POS tag to the morphological feature predictions
 - Supports data augmentation with non-punctuation-ending sentences
 
-## Differences compared to stanza
+### Differences compared to stanza
 
 - Leaner codebase due to focus on POS-tagging
 - Does not rely on the folder hierarchies and naming conventions of Universal Dependencies
