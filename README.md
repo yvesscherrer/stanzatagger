@@ -250,10 +250,10 @@ Training and optimization:
 
 The Stanza toolkit is described in the following paper:
 
-(Stanza: A Python Natural Language Processing Toolkit for Many Human Languages)[https://www.aclweb.org/anthology/2020.acl-demos.14/]
+[Stanza: A Python Natural Language Processing Toolkit for Many Human Languages](https://www.aclweb.org/anthology/2020.acl-demos.14/)
 
 More details about the POS-tagger architecture are given in the following paper:
 
-(Universal Dependency Parsing from Scratch)[https://www.aclweb.org/anthology/K18-2016/]
+[Universal Dependency Parsing from Scratch](https://www.aclweb.org/anthology/K18-2016/)
 
 Like the Stanza toolkit on which it is based, stanzatagger is released under the Apache License, Version 2.0. See the LICENSE file for more details.
