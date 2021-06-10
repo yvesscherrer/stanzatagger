@@ -342,12 +342,16 @@ def train(args, use_cuda=False):
     if len(train_data) == 0:
         raise RuntimeError("Cannot start training because no training data is available")
 
-    logger.info("Loading development data...")
-    dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched, cut_first=args.cut_dev)
-    dev_data = DataLoader(dev_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
+    if args.dev_data:
+        logger.info("Loading development data...")
+        dev_doc = Document(from_file=args.dev_data, read_positions=get_read_format_args(args), write_positions=get_write_format_args(args), copy_untouched=args.copy_untouched, cut_first=args.cut_dev)
+        dev_data = DataLoader(dev_doc, args.batch_size, vocab=trainer.vocab, pretrain=pretrained, evaluation=True)
+    else:
+        dev_doc = None
+        dev_data = []
 
     if not args.eval_interval:
-        args.eval_interval = get_adaptive_eval_interval(len(train_data), len(dev_data) if dev_data else 0)
+        args.eval_interval = get_adaptive_eval_interval(len(train_data), len(dev_data))
     if len(dev_data) > 0:
         logger.info("Evaluating the model every {} steps".format(args.eval_interval))
     else:
