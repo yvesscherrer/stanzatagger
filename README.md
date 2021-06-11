@@ -33,7 +33,7 @@ python tagger.py \
         --dev-data fr_sequoia-ud-dev.conllu \
         --dev-data-out exp_fr/dev_out.conllu \
         --scores-out exp_fr/scores.tsv \
-        --model-save exp_fr/model.pt \
+        --model-save exp_fr/tagger.pt \
         --batch-size 500 \
         --max-steps 50000 \
         --augment-nopunct
@@ -43,7 +43,7 @@ The following command uses the trained model to annotate the test set:
 
 ```
 python tagger.py \
-        --model exp_fr/model.pt \
+        --model exp_fr/tagger.pt \
         --test-data fr_sequoia-ud-test.conllu \
         --test-data-out exp_fr/test_out.conllu \
         --batch-size 500
@@ -59,7 +59,7 @@ python tagger.py \
         --test-data fr_sequoia-ud-test.conllu \
         --test-data-out exp_fr/test_out.conllu \
         --scores-out exp_fr/scores.tsv \
-        --model-save exp_fr/model.pt \
+        --model-save exp_fr/tagger.pt \
         --batch-size 500 \
         --max-steps 50000 \
         --augment-nopunct
