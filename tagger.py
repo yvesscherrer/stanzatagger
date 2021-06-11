@@ -209,6 +209,10 @@ def validate_args(args):
     if args.model and args.emb_data:
         raise RuntimeError("Cannot load embeddings in text format with --emb-data together with an existing model. Load the embeddings in binary (.pt) format with --embeddings.")
 
+    if not args.dev_data:
+        logger.info("Disable early stopping")
+        args.max_steps_before_stop = -1
+
     if args.model_save and args.emb_data and (args.embeddings_save is None):
         logger.warning("Pre-trained embeddings must be saved as a .pt file!")
         args.embeddings_save = args.model_save.replace(".pt", ".emb.pt")
@@ -430,7 +434,7 @@ def train(args, use_cuda=False):
                     scores_file.flush()
                 train_loss = 0
 
-            if global_step - last_best_step >= args.max_steps_before_stop:
+            if args.max_steps_before_stop > 0 and global_step - last_best_step >= args.max_steps_before_stop:
                 if args.optim == 'adam' and not using_amsgrad:
                     logger.info("Switching to AMSGrad")
                     last_best_step = global_step
